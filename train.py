@@ -5,6 +5,8 @@ import imageio.v2 as iio
 import numpy as np
 import argparse
 
+import torch.nn.functional as F
+
 from src.config.configloading import load_config
 from src.render import render, run_network
 from src.trainer import Trainer
@@ -14,7 +16,7 @@ from src.utils import get_psnr, get_mse, get_psnr_3d, get_ssim_3d, cast_to_image
 
 def config_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="./config/abdomen_50.yaml",
+    parser.add_argument("--config", default="./config/chest_50.yaml",
                         help="configs file path")
     return parser
 
@@ -57,12 +59,20 @@ class BasicTrainer(Trainer):
         select_ind = np.random.choice(len(self.eval_dset))
         projs = self.eval_dset.projs[select_ind]
         rays = self.eval_dset.rays[select_ind].reshape(-1, 8)
-        H, W = projs.shape
+        #H, W = projs.shape
+        H, W = [512, 512]
         projs_pred = []
         for i in range(0, rays.shape[0], self.n_rays):
             projs_pred.append(render(rays[i:i+self.n_rays], self.net, self.net_fine, **self.conf["render"])["acc"])
-        projs_pred = torch.cat(projs_pred, 0).reshape(H, W)
+        # Assuming 'projs' is a 2D tensor with shape (H, W), you can add batch and channel dimensions:
+        projs = projs.unsqueeze(0).unsqueeze(0)  # Shape becomes (1, 1, H, W)
 
+        # Now apply interpolation to resize to (512, 512)
+        projs = F.interpolate(projs, size=(512, 512), mode='bilinear', align_corners=False)
+
+        # Remove the batch and channel dimensions to return it to the original shape:
+        projs = projs.squeeze(0).squeeze(0)  # Shape becomes (512, 512)
+        
         # Evaluate density
         image = self.eval_dset.image
         image_pred = run_network(self.eval_dset.voxels, self.net_fine if self.net_fine is not None else self.net, self.netchunk)

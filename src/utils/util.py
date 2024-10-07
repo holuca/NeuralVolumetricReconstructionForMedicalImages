@@ -11,7 +11,10 @@ import pickle
 
 from skimage.metrics import structural_similarity
 
-get_mse = lambda x, y: torch.mean((x - y) ** 2)
+#get_mse = lambda x, y: torch.mean((x - y) ** 2)
+#get_mse = lambda x, y: torch.mean((torch.as_tensor(x) - torch.as_tensor(y)) ** 2)
+get_mse = lambda x, y: torch.mean((torch.as_tensor(x).float() - torch.as_tensor(y).float()) ** 2)
+
 
     
 def get_psnr(x, y):
