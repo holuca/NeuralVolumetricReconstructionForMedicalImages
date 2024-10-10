@@ -263,24 +263,6 @@ class TIGREDataset(Dataset):
         return T
 
 
-    def angle2pose1(self, DSO, angle, tilt_angle):
-        phi1 = -np.pi / 2
-        R1 = np.array([[1.0, 0.0, 0.0],
-                    [0.0, np.cos(phi1), -np.sin(phi1)],
-                    [0.0, np.sin(phi1), np.cos(phi1)]])
-        phi2 = np.pi / 2
-        R2 = np.array([[np.cos(phi2), -np.sin(phi2), 0.0],
-                    [np.sin(phi2), np.cos(phi2), 0.0],
-                    [0.0, 0.0, 1.0]])
-        R3 = np.array([[np.cos(angle), -np.sin(angle), 0.0],
-                    [np.sin(angle), np.cos(angle), 0.0],
-                    [0.0, 0.0, 1.0]])
-        rot = np.dot(np.dot(R3, R2), R1)
-        trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), 0])
-        T = np.eye(4)
-        T[:-1, :-1] = rot
-        T[:-1, -1] = trans
-        return T
 
     def get_near_far(self, geo: ConeGeometry, tolerance=0.005):
         """
