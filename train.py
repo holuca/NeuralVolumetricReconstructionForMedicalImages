@@ -5,7 +5,7 @@ import imageio.v2 as iio
 import numpy as np
 import argparse
 
-import torch.nn.functional as F
+#import torch.nn.functional as F
 
 from src.config.configloading import load_config
 from src.render import render, run_network
@@ -24,8 +24,8 @@ parser = config_parser()
 args = parser.parse_args()
 
 cfg = load_config(args.config)
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class BasicTrainer(Trainer):
@@ -59,19 +59,20 @@ class BasicTrainer(Trainer):
         select_ind = np.random.choice(len(self.eval_dset))
         projs = self.eval_dset.projs[select_ind]
         rays = self.eval_dset.rays[select_ind].reshape(-1, 8)
-        #H, W = projs.shape
-        H, W = [512, 512]
+        H, W = projs.shape
+        #H, W = [512, 512]
         projs_pred = []
         for i in range(0, rays.shape[0], self.n_rays):
             projs_pred.append(render(rays[i:i+self.n_rays], self.net, self.net_fine, **self.conf["render"])["acc"])
+        projs_pred = torch.cat(projs_pred, 0).reshape(H, W)
         # Assuming 'projs' is a 2D tensor with shape (H, W), you can add batch and channel dimensions:
-        projs = projs.unsqueeze(0).unsqueeze(0)  # Shape becomes (1, 1, H, W)
+        #projs = projs.unsqueeze(0).unsqueeze(0)  # Shape becomes (1, 1, H, W)
 
         # Now apply interpolation to resize to (512, 512)
-        projs = F.interpolate(projs, size=(512, 512), mode='bilinear', align_corners=False)
+        #projs = F.interpolate(projs, size=(512, 512), mode='bilinear', align_corners=False)
 
         # Remove the batch and channel dimensions to return it to the original shape:
-        projs = projs.squeeze(0).squeeze(0)  # Shape becomes (512, 512)
+        #projs = projs.squeeze(0).squeeze(0)  # Shape becomes (512, 512)
         
         # Evaluate density
         image = self.eval_dset.image
