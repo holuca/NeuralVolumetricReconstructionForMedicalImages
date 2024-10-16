@@ -20,9 +20,9 @@ class ConeGeometry(object):
         self.DSO = data["DSO"]/1000  # Distance Source Origin        (m)                                    ----> infinity/large value to simluate parallel X-rays=?
         # Detector parameters
         self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
-        self.nDetector = np.array([512, 512])
-        #self.dDetector = np.array(data["dDetector"])/1000  # size of each pixel            (m)
-        self.dDetector = np.array([0.0007,0.0007])
+        #self.nDetector = np.array([512, 512])
+        self.dDetector = np.array(data["dDetector"])/1000  # size of each pixel            (m)
+        #self.dDetector = np.array([0.0007,0.0007])
         self.sDetector = self.nDetector * self.dDetector  # total size of the detector    (m)
         # Image parameters
         self.nVoxel = np.array(data["nVoxel"])  # number of voxels              (vx)
