@@ -3,6 +3,7 @@ import pickle
 import os
 import sys
 import numpy as np
+import torch.nn.functional as F
 
 from torch.utils.data import DataLoader, Dataset
 
@@ -19,10 +20,10 @@ class ConeGeometry(object):
         self.DSD = sys.maxsize/1000 # Distance Source Detector      (m)                                        ----> Detector to Origin Distance same                           
         self.DSO = data["DSO"]/1000  # Distance Source Origin        (m)                                    ----> infinity/large value to simluate parallel X-rays=?
         # Detector parameters
-        self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
-        #self.nDetector = np.array([512, 512])
+        #self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
+        self.nDetector = np.array([128, 128])
         self.dDetector = np.array(data["dDetector"])/1000  # size of each pixel            (m)
-        #self.dDetector = np.array([0.0007,0.0007])
+
         self.sDetector = self.nDetector * self.dDetector  # total size of the detector    (m)
         # Image parameters
         self.nVoxel = np.array(data["nVoxel"])  # number of voxels              (vx)
@@ -59,12 +60,14 @@ class TIGREDataset(Dataset):
         self.type = type
         self.n_rays = n_rays
         self.near, self.far = self.get_near_far(self.geo)
-        self.tilt_angle = data.get("tilt_angle", 0)
-    
+
         if type == "train":
             self.projs = torch.tensor(data["train"]["projections"], dtype=torch.float32, device=device)
+            print("Shape of the first projection of train function ", self.projs[0].shape)
+            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(128, 128), mode='bilinear', align_corners=False).squeeze(1)
+            print("Shape of the first projection of train function after rehsaping", self.projs[0].shape)
             angles = data["train"]["angles"]
-            rays = self.get_rays(angles, self.tilt_angle, self.geo, device)
+            rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)
             self.n_samples = data["numTrain"]
             coords = torch.stack(torch.meshgrid(torch.linspace(0, self.geo.nDetector[1] - 1, self.geo.nDetector[1], device=device),
@@ -74,12 +77,16 @@ class TIGREDataset(Dataset):
             self.voxels = torch.tensor(self.get_voxels(self.geo), dtype=torch.float32, device=device)
         elif type == "val":
             self.projs = torch.tensor(data["val"]["projections"], dtype=torch.float32, device=device)
+            print("Shape of the first projection: ", self.projs[0].shape)
+            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(128, 128), mode='bilinear', align_corners=False).squeeze(1)
             angles = data["val"]["angles"]
-            rays = self.get_rays(angles, self.tilt_angle, self.geo, device)
+            rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)
             self.n_samples = data["numVal"]
             self.image = torch.tensor(data["image"], dtype=torch.float32, device=device)
             self.voxels = torch.tensor(self.get_voxels(self.geo), dtype=torch.float32, device=device)
+    
+
         
     def __len__(self):
         return self.n_samples

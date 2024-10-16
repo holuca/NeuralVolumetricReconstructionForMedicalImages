@@ -58,9 +58,15 @@ class BasicTrainer(Trainer):
         # Evaluate projection
         select_ind = np.random.choice(len(self.eval_dset))
         projs = self.eval_dset.projs[select_ind]
+        ## Resize projs (ground truth) to match projs_pred size (128x128)
+        #projs = F.interpolate(projs.unsqueeze(0).unsqueeze(0), size=(128, 128), mode='bilinear', align_corners=False)
+        #projs = projs.squeeze(0).squeeze(0)  # Remove the extra dimensions
         rays = self.eval_dset.rays[select_ind].reshape(-1, 8)
         H, W = projs.shape
-        #H, W = [512, 512]
+        #H, W = self.eval_dset.geo.nDetector
+        print(f"Number of rays: {rays.shape[0]}")
+        print("H: ", H)
+        #H, W = [128, 128]
         projs_pred = []
         for i in range(0, rays.shape[0], self.n_rays):
             projs_pred.append(render(rays[i:i+self.n_rays], self.net, self.net_fine, **self.conf["render"])["acc"])
