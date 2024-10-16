@@ -20,8 +20,9 @@ class ConeGeometry(object):
         self.DSO = data["DSO"]/1000  # Distance Source Origin        (m)                                    ----> infinity/large value to simluate parallel X-rays=?
         # Detector parameters
         self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
-        #self.nDetector = np.array([128, 128]) #nVoxel [128, 128, 128]
+        #self.nDetector = np.array([512, 512])
         self.dDetector = np.array(data["dDetector"])/1000  # size of each pixel            (m)
+        #self.dDetector = np.array([0.0007,0.0007])
         self.sDetector = self.nDetector * self.dDetector  # total size of the detector    (m)
         # Image parameters
         self.nVoxel = np.array(data["nVoxel"])  # number of voxels              (vx)
@@ -41,7 +42,7 @@ class ConeGeometry(object):
         self.filter = data["filter"]
 
         self.magnification = 1
-        self.tilt_angle = data.get("tilt_angle", 0) #default 0
+        self.tilt_angle = data.get("tilt_angle", 29) #default 29
 
 
 class TIGREDataset(Dataset):
@@ -58,6 +59,7 @@ class TIGREDataset(Dataset):
         self.type = type
         self.n_rays = n_rays
         self.near, self.far = self.get_near_far(self.geo)
+        self.tilt_angle = data.get("tilt_angle", 0)
     
         if type == "train":
             self.projs = torch.tensor(data["train"]["projections"], dtype=torch.float32, device=device)
@@ -261,6 +263,24 @@ class TIGREDataset(Dataset):
         return T
 
 
+    def angle2pose1(self, DSO, angle, tilt_angle):
+        phi1 = -np.pi / 2
+        R1 = np.array([[1.0, 0.0, 0.0],
+                    [0.0, np.cos(phi1), -np.sin(phi1)],
+                    [0.0, np.sin(phi1), np.cos(phi1)]])
+        phi2 = np.pi / 2
+        R2 = np.array([[np.cos(phi2), -np.sin(phi2), 0.0],
+                    [np.sin(phi2), np.cos(phi2), 0.0],
+                    [0.0, 0.0, 1.0]])
+        R3 = np.array([[np.cos(angle), -np.sin(angle), 0.0],
+                    [np.sin(angle), np.cos(angle), 0.0],
+                    [0.0, 0.0, 1.0]])
+        rot = np.dot(np.dot(R3, R2), R1)
+        trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), 0])
+        T = np.eye(4)
+        T[:-1, :-1] = rot
+        T[:-1, -1] = trans
+        return T
 
     def get_near_far(self, geo: ConeGeometry, tolerance=0.005):
         """

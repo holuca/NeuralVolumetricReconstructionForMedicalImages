@@ -59,19 +59,12 @@ class BasicTrainer(Trainer):
         select_ind = np.random.choice(len(self.eval_dset))
         projs = self.eval_dset.projs[select_ind]
         rays = self.eval_dset.rays[select_ind].reshape(-1, 8)
-        #H, W = projs.shape
-        H, W = [512, 512]
+        H, W = projs.shape
+        #H, W = [512, 512]
         projs_pred = []
         for i in range(0, rays.shape[0], self.n_rays):
             projs_pred.append(render(rays[i:i+self.n_rays], self.net, self.net_fine, **self.conf["render"])["acc"])
-        # Assuming 'projs' is a 2D tensor with shape (H, W), you can add batch and channel dimensions:
-        projs = projs.unsqueeze(0).unsqueeze(0)  # Shape becomes (1, 1, H, W)
-
-        # Now apply interpolation to resize to (512, 512)
-        projs = F.interpolate(projs, size=(512, 512), mode='bilinear', align_corners=False)
-
-        # Remove the batch and channel dimensions to return it to the original shape:
-        projs = projs.squeeze(0).squeeze(0)  # Shape becomes (512, 512)
+        projs_pred = torch.cat(projs_pred, 0).reshape(H, W)
         
         # Evaluate density
         image = self.eval_dset.image
