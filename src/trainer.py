@@ -13,8 +13,6 @@ from .encoder import get_encoder
 
 
 
-import napari
-
 class Trainer:
     def __init__(self, cfg, device="cuda"):
 
