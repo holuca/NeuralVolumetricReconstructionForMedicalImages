@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from torch.utils.data import DataLoader, Dataset
 
-
+#asdfasdfasdf
 
 
 import numpy as np
@@ -362,7 +362,7 @@ class TIGREDataset(Dataset):
                 rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
                 poseray = plot_camera_pose(pose.cpu().detach().numpy())
                 o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
-            asdfasdf
+
             else:
                 raise NotImplementedError("Unknown CT scanner type!")
             rays.append(torch.concat([rays_o, rays_d], dim=-1))
