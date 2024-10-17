@@ -8,6 +8,184 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
 
+
+
+import numpy as np
+import open3d as o3d
+
+def plot_rays(ray_directions: np.array, ray_origins: np.array, ray_length: float):
+    """
+    Plot rays of a scanner (open3d).
+
+    Args:
+    ray_directions (np.array(W, H, 3)): ray directions.
+    ray_origins (np.array(W, H, 3)): ray origins.
+    ray_length (float): ray length.
+
+    Returns:
+    lines (o3d.geometry.LineSet): output lines.
+
+    """
+
+    W, H, _ = ray_directions.shape
+    ori1 = ray_origins[0, 0, :]
+    ori2 = ray_origins[W - 1, 0, :]
+    ori3 = ray_origins[W - 1, H - 1, :]
+    ori4 = ray_origins[0, H - 1, :]
+    end1 = ray_origins[0, 0, :] + ray_directions[0, 0, :] * ray_length
+    end2 = ray_origins[W - 1, 0, :] + ray_directions[W - 1, 0, :] * ray_length
+    end3 = ray_origins[W - 1, H - 1, :] + ray_directions[W - 1, H - 1, :] * ray_length
+    end4 = ray_origins[0, H - 1, :] + ray_directions[0, H - 1, :] * ray_length
+    lines = [[0, 4], [1, 5], [2, 6], [3, 7], [4, 5], [5, 6], [6, 7], [7, 4]]
+    pts = np.vstack([ori1, ori2, ori3, ori4, end1, end2, end3, end4])
+    line_ray = o3d.geometry.LineSet(
+        points=o3d.utility.Vector3dVector(pts),
+        lines=o3d.utility.Vector2iVector(lines),
+    )
+
+    return line_ray
+
+def plot_camera_pose(pose):
+    """
+    Plot camera pose (open3d).
+
+    Args:
+    pose (np.array(4, 4)): camera pose.
+
+    Returns:
+    lines (o3d.geometry.LineSet): output lines.
+
+    """
+
+    colorlines = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    origin = np.array([[0], [0], [0], [1]])
+    axes = np.array([[1, 0, 0],
+                     [0, 1, 0],
+                     [0, 0, 1],
+                     [1, 1, 1]])
+    points = np.vstack([np.transpose(origin), np.transpose(axes)])[:, :-1]
+    lines = [[0, 1], [0, 2], [0, 3]]
+    worldframe = o3d.geometry.LineSet(
+        points=o3d.utility.Vector3dVector(points),
+        lines=o3d.utility.Vector2iVector(lines),
+    )
+    worldframe.colors = o3d.utility.Vector3dVector(colorlines)
+
+    # bbox
+    xyz_min = [-0.5, -0.5, -0.5]
+    xyz_max = [0.5, 0.5, 0.5]
+    points = [[xyz_min[0], xyz_min[1], xyz_min[2]],
+              [xyz_max[0], xyz_min[1], xyz_min[2]],
+              [xyz_min[0], xyz_max[1], xyz_min[2]],
+              [xyz_max[0], xyz_max[1], xyz_min[2]],
+              [xyz_min[0], xyz_min[1], xyz_max[2]],
+              [xyz_max[0], xyz_min[1], xyz_max[2]],
+              [xyz_min[0], xyz_max[1], xyz_max[2]],
+              [xyz_max[0], xyz_max[1], xyz_max[2]]]
+    lines = [
+        [0, 1],
+        [0, 2],
+        [1, 3],
+        [2, 3],
+        [4, 5],
+        [4, 6],
+        [5, 7],
+        [6, 7],
+        [0, 4],
+        [1, 5],
+        [2, 6],
+        [3, 7],
+    ]
+    colors = [[1, 0, 0] for i in range(len(lines))]
+    line_set_bbox = o3d.geometry.LineSet(
+        points=o3d.utility.Vector3dVector(points),
+        lines=o3d.utility.Vector2iVector(lines),
+    )
+    line_set_bbox.colors = o3d.utility.Vector3dVector(colors)
+
+    origin = np.array([[0], [0], [0], [1]])
+    unit = 0.3
+    axes = np.array([[unit, 0, 0],
+                     [0, unit, 0],
+                     [0, 0, unit],
+                     [1, 1, 1]])
+    axes_trans = np.dot(pose, axes)
+    origin_trans = np.dot(pose, origin)
+    points = np.vstack([np.transpose(origin_trans), np.transpose(axes_trans)])[:, :-1]
+    lines = [[0, 1], [0, 2], [0, 3]]
+    colorlines = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    line_set = o3d.geometry.LineSet(
+        points=o3d.utility.Vector3dVector(points),
+        lines=o3d.utility.Vector2iVector(lines),
+    )
+    line_set.colors = o3d.utility.Vector3dVector(colorlines)
+
+    return line_set + worldframe
+
+def plot_cube(cube_center: np.array, cube_size: np.array):
+    """
+    Plot a cube (open3d).
+
+    Args:
+    cube_center (np.array(3, 1)): cube center.
+    cube_size (np.array(3, 1)): cube size.
+
+    Returns:
+    lines (o3d.geometry.LineSet): output lines.
+
+    """
+
+    # coordinate frame
+    colorlines = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    origin = np.array([[0], [0], [0], [1]])
+    unit = 0.3
+    axes = np.array([[unit, 0, 0],
+                     [0, unit, 0],
+                     [0, 0, unit],
+                     [1, 1, 1]]) * np.vstack([np.hstack([cube_size, cube_size, cube_size]), np.ones((1, 3))])
+    points = np.vstack([np.transpose(origin), np.transpose(axes)])[:, :-1]
+    points += cube_center.squeeze()
+    lines = [[0, 1], [0, 2], [0, 3]]
+    worldframe = o3d.geometry.LineSet(
+        points=o3d.utility.Vector3dVector(points),
+        lines=o3d.utility.Vector2iVector(lines),
+    )
+    worldframe.colors = o3d.utility.Vector3dVector(colorlines)
+    # bbox
+    xyz_min = cube_center.squeeze() + np.array([-0.5, -0.5, -0.5]) * cube_size.squeeze()
+    xyz_max = cube_center.squeeze() + np.array([0.5, 0.5, 0.5]) * cube_size.squeeze()
+    points = [[xyz_min[0], xyz_min[1], xyz_min[2]],
+              [xyz_max[0], xyz_min[1], xyz_min[2]],
+              [xyz_min[0], xyz_max[1], xyz_min[2]],
+              [xyz_max[0], xyz_max[1], xyz_min[2]],
+              [xyz_min[0], xyz_min[1], xyz_max[2]],
+              [xyz_max[0], xyz_min[1], xyz_max[2]],
+              [xyz_min[0], xyz_max[1], xyz_max[2]],
+              [xyz_max[0], xyz_max[1], xyz_max[2]]]
+    lines = [
+        [0, 1],
+        [0, 2],
+        [1, 3],
+        [2, 3],
+        [4, 5],
+        [4, 6],
+        [5, 7],
+        [6, 7],
+        [0, 4],
+        [1, 5],
+        [2, 6],
+        [3, 7],
+    ]
+    colors = [[1, 0, 0] for i in range(len(lines))]
+    line_set_bbox = o3d.geometry.LineSet(
+        points=o3d.utility.Vector3dVector(points),
+        lines=o3d.utility.Vector2iVector(lines),
+    )
+    line_set_bbox.colors = o3d.utility.Vector3dVector(colors)
+    return line_set_bbox + worldframe
+
+
+
 class ConeGeometry(object):
     """
     Cone beam CT geometry. Note that we convert to meter from millimeter.
@@ -16,17 +194,18 @@ class ConeGeometry(object):
 
         # VARIABLE                                          DESCRIPTION                    UNITS
         # -------------------------------------------------------------------------------------
-        #self.DSD = data["DSD"]/1000 # Distance Source Detector      (m) 
-        self.DSD = sys.maxsize/1000 # Distance Source Detector      (m)                                        ----> Detector to Origin Distance same                           
-        self.DSO = data["DSO"]/1000  # Distance Source Origin        (m)                                    ----> infinity/large value to simluate parallel X-rays=?
+        self.DSD = data["DSD"]/1000 # Distance Source Detector      (m) 
+        #self.DSD = sys.maxsize/1000 # Distance Source Detector      (m)                                        ----> Detector to Origin Distance same                           
+        self.DSO = 1  # Distance Source Origin        (m)                                    ----> infinity/large value to simluate parallel X-rays=?
         # Detector parameters
         #self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
         self.nDetector = np.array([128, 128])
-        self.dDetector = np.array(data["dDetector"])/1000  # size of each pixel            (m)
+        self.dDetector = np.array(data["dDetector"])/1000 * np.sqrt(2) # size of each pixel            (m)
 
         self.sDetector = self.nDetector * self.dDetector  # total size of the detector    (m)
         # Image parameters
         self.nVoxel = np.array(data["nVoxel"])  # number of voxels              (vx)
+        #self.nVoxel = np.array([128, 128, 128])
         #each voxel represents a cube of x mm
         self.dVoxel = np.array(data["dVoxel"])/1000  # size of each voxel            (m)
         self.sVoxel = self.nVoxel * self.dVoxel  # total size of the image       (m)
@@ -37,9 +216,7 @@ class ConeGeometry(object):
 
         # Auxiliary
         self.accuracy = data["accuracy"]  # Accuracy of FWD proj          (vx/sample)  # noqa: E501
-        # Mode
-        #self.mode = data["mode"]  # parallel, cone                ...
-        self.mode = 'parallel'
+        self.mode = 'parallel' # Mode parallel, cone    
         self.filter = data["filter"]
 
         self.magnification = 1
@@ -61,11 +238,13 @@ class TIGREDataset(Dataset):
         self.n_rays = n_rays
         self.near, self.far = self.get_near_far(self.geo)
 
+        
+
         if type == "train":
             self.projs = torch.tensor(data["train"]["projections"], dtype=torch.float32, device=device)
             print("Shape of the first projection of train function ", self.projs[0].shape)
-            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(256, 256), mode='bilinear', align_corners=False).squeeze(1)
-            print("Shape of the first projection of train function after rehsaping", self.projs[0].shape)
+            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(self.geo.nDetector[0], self.geo.nDetector[1]), mode='bilinear', align_corners=False).squeeze(1)
+            #print("Shape of the first projection of train function after rehsaping", self.projs[0].shape)
             angles = data["train"]["angles"]
             rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)
@@ -75,16 +254,22 @@ class TIGREDataset(Dataset):
             self.coords = torch.reshape(coords, [-1, 2])
             self.image = torch.tensor(data["image"], dtype=torch.float32, device=device)
             self.voxels = torch.tensor(self.get_voxels(self.geo), dtype=torch.float32, device=device)
+            # Rescale the voxels to match your desired shape (e.g., 128x128x128 or 256x256x256)
+            #self.voxels = F.interpolate(self.voxels.unsqueeze(0), size=(256, 256, 256), mode='trilinear', align_corners=False).squeeze(0)
+
         elif type == "val":
             self.projs = torch.tensor(data["val"]["projections"], dtype=torch.float32, device=device)
-            print("Shape of the first projection: ", self.projs[0].shape)
-            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(256, 256), mode='bilinear', align_corners=False).squeeze(1)
+            #print("Shape of the first projection: ", self.projs[0].shape)
+            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(self.geo.nDetector[0], self.geo.nDetector[1]), mode='bilinear', align_corners=False).squeeze(1)
             angles = data["val"]["angles"]
             rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)
             self.n_samples = data["numVal"]
             self.image = torch.tensor(data["image"], dtype=torch.float32, device=device)
             self.voxels = torch.tensor(self.get_voxels(self.geo), dtype=torch.float32, device=device)
+            # Rescale the voxels to match your desired shape (e.g., 128x128x128 or 256x256x256)
+            #self.voxels = F.interpolate(self.voxels.unsqueeze(0), size=(256, 256, 256), mode='trilinear', align_corners=False).squeeze(0)
+
     
 
         
@@ -123,65 +308,12 @@ class TIGREDataset(Dataset):
                         np.linspace(-s2, s2, n2),
                         np.linspace(-s3, s3, n3), indexing="ij")
         voxel = np.asarray(xyz).transpose([1, 2, 3, 0])
+        #voxel_tensor = torch.tensor(voxel, dtype=torch.float32, device="cuda")
+        #voxel_tensor = F.interpolate(voxel_tensor.unsqueeze(0), size=(256, 256, 256), mode='trilinear', align_corners=False).squeeze(0)
+
         return voxel
     
 
-    def get_rays1(self, angles, geo, device):
-        """
-        Custom method to calculate rays for laminography using TIGRE geometry but applying a tilt.
-        """
-        W, H = geo.nDetector  # Detector size (width and height)
-        DSD = geo.DSD         # Distance source to detector
-        DSO = geo.DSO         # Distance source to object
-        
-        tilt_angle = self.tilt_angle  # Tilt angle (specified during initialization)
-        
-        # Tilt matrix for laminography
-        tilt_matrix = torch.tensor([[1, 0, 0],
-                                    [0, np.cos(tilt_angle), -np.sin(tilt_angle)],
-                                    [0, np.sin(tilt_angle), np.cos(tilt_angle)]], device=device)
-        
-        rays = []
-        for angle in angles:
-            pose = torch.tensor(self.angle2pose(DSO, angle)).to(device)  # Camera pose matrix based on angle
-            
-            rays_o, rays_d = None, None
-            if geo.mode == "cone":
-                # Generate rays for cone-beam setup (TIGRE-based)
-                i, j = torch.meshgrid(torch.linspace(0, W - 1, W, device=device),
-                                      torch.linspace(0, H - 1, H, device=device), indexing="ij")
-                uu = (i.t() + 0.5 - W / 2) * geo.dDetector[0] + geo.offDetector[0]
-                vv = (j.t() + 0.5 - H / 2) * geo.dDetector[1] + geo.offDetector[1]
-                dirs = torch.stack([uu / DSD, vv / DSD, torch.ones_like(uu)], -1)
-                
-                # Apply tilt to the ray directions
-                dirs = torch.matmul(dirs, tilt_matrix.T)
-                
-                rays_d = torch.sum(torch.matmul(pose[:3, :3], dirs[..., None]).to(device), -1)
-                rays_o = pose[:3, -1].expand(rays_d.shape)  # Origin stays at source position
-
-            elif geo.mode == "parallel":
-                # Generate rays for parallel-beam setup (TIGRE-based)
-                i, j = torch.meshgrid(torch.linspace(0, W - 1, W, device=device),
-                                      torch.linspace(0, H - 1, H, device=device), indexing="ij")
-                uu = (i.t() + 0.5 - W / 2) * geo.dDetector[0] + geo.offDetector[0]
-                vv = (j.t() + 0.5 - H / 2) * geo.dDetector[1] + geo.offDetector[1]
-                dirs = torch.stack([torch.zeros_like(uu), torch.zeros_like(uu), torch.ones_like(uu)], -1)
-                
-               
-
-                # Apply tilt to the ray directions
-                dirs = torch.matmul(dirs, tilt_matrix.T)
-                rays_d = torch.sum(torch.matmul(pose[:3, :3], dirs[..., None]).to(device), -1)
-                rays_o = torch.sum(torch.matmul(pose[:3, :3], torch.stack([uu, vv, torch.zeros_like(uu)], -1)[..., None]).to(device), -1) + pose[:3, -1].expand(rays_d.shape)
-            
-            else:
-                raise NotImplementedError("Unknown scanner type!")
-            
-            # Append rays for each angle
-            rays.append(torch.cat([rays_o, rays_d], dim=-1))
-        
-        return torch.stack(rays, dim=0)
 
     
     def get_rays(self, angles, tilt_angle, geo: ConeGeometry, device):
@@ -204,6 +336,13 @@ class TIGREDataset(Dataset):
                 dirs = torch.stack([uu / DSD, vv / DSD, torch.ones_like(uu)], -1)
                 rays_d = torch.sum(torch.matmul(pose[:3,:3], dirs[..., None]).to(device), -1) # pose[:3, :3] * 
                 rays_o = pose[:3, -1].expand(rays_d.shape)
+
+                #import open3d as o3d
+                #cube1 = plot_cube(np.zeros((3,1)), geo.sVoxel[...,np.newaxis])
+                #cube2 = plot_cube(np.zeros((3,1)), np.ones((3,1))*geo.DSO*2)
+                #rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
+                #poseray = plot_camera_pose(pose.cpu().detach().numpy())
+                #o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
             elif geo.mode == "parallel":
                 i, j = torch.meshgrid(torch.linspace(0, W - 1, W, device=device),
                                         torch.linspace(0, H - 1, H, device=device), indexing="ij")  # pytorch"s meshgrid has indexing="ij"
@@ -212,15 +351,19 @@ class TIGREDataset(Dataset):
                 dirs = torch.stack([torch.zeros_like(uu), torch.zeros_like(uu), torch.ones_like(uu)], -1)
                 rays_d = torch.sum(torch.matmul(pose[:3,:3], dirs[..., None]).to(device), -1) # pose[:3, :3] * 
                 rays_o = torch.sum(torch.matmul(pose[:3,:3], torch.stack([uu,vv,torch.zeros_like(uu)],-1)[..., None]).to(device), -1) + pose[:3, -1].expand(rays_d.shape)
+                
+
+                #shift ray origin to account for tilt angle (aligning object with parallel beams)
+                #rays_o = torch.sum(torch.matmul(pose[:3, :3], torch.stack([uu, vv, torch.zeros_like(uu)], -1)[..., None]), -1) 
 
 
-                # import open3d as o3d
-                # from src.util.draw_util import plot_rays, plot_cube, plot_camera_pose
-                # cube1 = plot_cube(np.zeros((3,1)), geo.sVoxel[...,np.newaxis])
-                # cube2 = plot_cube(np.zeros((3,1)), np.ones((3,1))*geo.DSO*2)
-                # rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
-                # poseray = plot_camera_pose(pose.cpu().detach().numpy())
-                # o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
+                #rays_o[:, :, 2] += np.tan(tilt_angle) * self.geo.DSO  # Adjust origin in z-axis
+                #import open3d as o3d
+                #cube1 = plot_cube(np.zeros((3,1)), geo.sVoxel[...,np.newaxis])
+                #cube2 = plot_cube(np.zeros((3,1)), np.ones((3,1))*geo.DSO*2)
+                #rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
+                #poseray = plot_camera_pose(pose.cpu().detach().numpy())
+                #o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
             
             else:
                 raise NotImplementedError("Unknown CT scanner type!")
@@ -253,8 +396,11 @@ class TIGREDataset(Dataset):
         R4_y = np.array([[np.cos(tilt_angle), 0.0, np.sin(tilt_angle)],
                     [0.0, 0.0, 1.0],
                     [-np.sin(tilt_angle), 0.0, np.cos(tilt_angle)]])
-
-        R4 = np.array([[1, 0, 0],
+        
+        R4_z = np.array([[np.cos(tilt_angle), -np.sin(tilt_angle), 0],
+               [np.sin(tilt_angle), np.cos(tilt_angle), 0],
+               [0, 0, 1]])
+        R4_x = np.array([[1, 0, 0],
                    [0, np.cos(tilt_angle), -np.sin(tilt_angle)],
                    [0, np.sin(tilt_angle), np.cos(tilt_angle)]])
 
@@ -262,7 +408,7 @@ class TIGREDataset(Dataset):
 
         #translation vector T places x-ray source at a distance DSO from the centerof the object
         #source is rotated around the object asthe angle changes, simulation rotation during the tomography scan.
-        rot = np.dot(np.dot(np.dot(R4, R3), R2), R1)
+        rot = np.dot(np.dot(np.dot(R4_x, R3), R2), R1)
         trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), 0])
         T = np.eye(4)
         T[:-1, :-1] = rot
@@ -284,21 +430,3 @@ class TIGREDataset(Dataset):
         far = np.min([geo.DSO * 2, geo.DSO + dist_max + tolerance])
         return near, far
 
-
-''' DATA SHOULD LOOK SMH like this
-data = {
-    "DSD": 1500,  # Example distance source-detector
-    "DSO": 1000,  # Example distance source-origin
-    "nDetector": [512, 512],  # Example detector resolution
-    "dDetector": [0.8, 0.8],  # Example detector pixel size
-    "nVoxel": [256, 256, 256],  # Example voxel resolution
-    "dVoxel": [1, 1, 1],  # Example voxel size
-    "offOrigin": [0, 0, 0],  # Example image offset
-    "offDetector": [0, 0, 0],  # Example detector offset
-    "accuracy": 0.5,  # Example accuracy
-    "mode": "cone",  # Cone-beam CT
-    "filter": "ram-lak",  # Example filter
-    "tilt_angle": 20,  # 20 degree tilt for laminography
-}
-
-'''

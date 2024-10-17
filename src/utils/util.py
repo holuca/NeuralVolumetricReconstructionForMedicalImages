@@ -9,6 +9,8 @@ import cv2
 from tqdm import tqdm
 import pickle
 
+import torch.nn.functional as F
+
 from skimage.metrics import structural_similarity
 
 get_mse = lambda x, y: torch.mean((x - y) ** 2)
@@ -29,6 +31,17 @@ def get_psnr(x, y):
 
 
 def get_psnr_3d(arr1, arr2, size_average=True, PIXEL_MAX=1.0):
+
+    ###
+
+    # Check for size mismatch and rescale if needed
+    if arr1.shape != arr2.shape:
+        target_size = min(arr1.shape[-1], arr2.shape[-1])  # Choose the smallest size to match
+        arr1 = F.interpolate(arr1.unsqueeze(0), size=(target_size, target_size, target_size), mode='trilinear', align_corners=False).squeeze(0)
+        arr2 = F.interpolate(arr2.unsqueeze(0), size=(target_size, target_size, target_size), mode='trilinear', align_corners=False).squeeze(0)
+
+
+    ###
     """
     :param arr1:
         Format-[NDHW], OriImage [0,1]
@@ -46,6 +59,11 @@ def get_psnr_3d(arr1, arr2, size_average=True, PIXEL_MAX=1.0):
     arr1 = arr1.astype(np.float64)
     arr2 = arr2.astype(np.float64)
     eps = 1e-10
+
+
+    
+
+
     se = np.power(arr1 - arr2, 2)
     mse = se.mean(axis=1).mean(axis=1).mean(axis=1)
     zero_mse = np.where(mse == 0)
