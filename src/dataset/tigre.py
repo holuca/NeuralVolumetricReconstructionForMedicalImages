@@ -195,17 +195,15 @@ class ConeGeometry(object):
         # VARIABLE                                          DESCRIPTION                    UNITS
         # -------------------------------------------------------------------------------------
         self.DSD = data["DSD"]/1000 # Distance Source Detector      (m) 
-        #self.DSD = sys.maxsize/1000 # Distance Source Detector      (m)                                        ----> Detector to Origin Distance same                           
-        self.DSO = 1  # Distance Source Origin        (m)                                    ----> infinity/large value to simluate parallel X-rays=?
+        self.DSD = sys.maxsize/1000 # Distance Source Detector      (m)                                        ----> Detector to Origin Distance same   
         # Detector parameters
         #self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
         self.nDetector = np.array([128, 128])
-        self.dDetector = np.array(data["dDetector"])/1000 * np.sqrt(2) # size of each pixel            (m)
+        self.dDetector = np.array(data["dDetector"])/1000 * np.sqrt(2) # size of each pixel      (m)    --> sqrt 2 as for parallel beam diagonal needs to be included
 
         self.sDetector = self.nDetector * self.dDetector  # total size of the detector    (m)
         # Image parameters
         self.nVoxel = np.array(data["nVoxel"])  # number of voxels              (vx)
-        #self.nVoxel = np.array([128, 128, 128])
         #each voxel represents a cube of x mm
         self.dVoxel = np.array(data["dVoxel"])/1000  # size of each voxel            (m)
         self.sVoxel = self.nVoxel * self.dVoxel  # total size of the image       (m)
@@ -357,14 +355,14 @@ class TIGREDataset(Dataset):
                 #rays_o = torch.sum(torch.matmul(pose[:3, :3], torch.stack([uu, vv, torch.zeros_like(uu)], -1)[..., None]), -1) 
 
 
-                #rays_o[:, :, 2] += np.tan(tilt_angle) * self.geo.DSO  # Adjust origin in z-axis
-                #import open3d as o3d
-                #cube1 = plot_cube(np.zeros((3,1)), geo.sVoxel[...,np.newaxis])
-                #cube2 = plot_cube(np.zeros((3,1)), np.ones((3,1))*geo.DSO*2)
-                #rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
-                #poseray = plot_camera_pose(pose.cpu().detach().numpy())
-                #o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
-            
+                rays_o[:, :, 2] += np.tan(tilt_angle) * self.geo.DSO  # Adjust origin in z-axis
+                import open3d as o3d
+                cube1 = plot_cube(np.zeros((3,1)), geo.sVoxel[...,np.newaxis])
+                cube2 = plot_cube(np.zeros((3,1)), np.ones((3,1))*geo.DSO*2)
+                rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
+                poseray = plot_camera_pose(pose.cpu().detach().numpy())
+                o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
+            asdfasdf
             else:
                 raise NotImplementedError("Unknown CT scanner type!")
             rays.append(torch.concat([rays_o, rays_d], dim=-1))
