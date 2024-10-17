@@ -64,7 +64,7 @@ class TIGREDataset(Dataset):
         if type == "train":
             self.projs = torch.tensor(data["train"]["projections"], dtype=torch.float32, device=device)
             print("Shape of the first projection of train function ", self.projs[0].shape)
-            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(128, 128), mode='bilinear', align_corners=False).squeeze(1)
+            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(256, 256), mode='bilinear', align_corners=False).squeeze(1)
             print("Shape of the first projection of train function after rehsaping", self.projs[0].shape)
             angles = data["train"]["angles"]
             rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
@@ -78,7 +78,7 @@ class TIGREDataset(Dataset):
         elif type == "val":
             self.projs = torch.tensor(data["val"]["projections"], dtype=torch.float32, device=device)
             print("Shape of the first projection: ", self.projs[0].shape)
-            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(128, 128), mode='bilinear', align_corners=False).squeeze(1)
+            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(256, 256), mode='bilinear', align_corners=False).squeeze(1)
             angles = data["val"]["angles"]
             rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)
