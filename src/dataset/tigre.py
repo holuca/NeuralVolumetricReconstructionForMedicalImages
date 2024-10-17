@@ -195,7 +195,7 @@ class ConeGeometry(object):
         # VARIABLE                                          DESCRIPTION                    UNITS
         # -------------------------------------------------------------------------------------
         self.DSD = data["DSD"]/1000 # Distance Source Detector      (m) 
-        self.DSD = sys.maxsize/1000 # Distance Source Detector      (m)                                        ----> Detector to Origin Distance same   
+        self.DSO = data["DSO"]/1000  # Distance Source Origin        (m)  (to inf for parallel)
         # Detector parameters
         #self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
         self.nDetector = np.array([128, 128])
@@ -218,7 +218,7 @@ class ConeGeometry(object):
         self.filter = data["filter"]
 
         self.magnification = 1
-        self.tilt_angle = data.get("tilt_angle", 0) #default 0
+        self.tilt_angle = data.get("tilt_angle", 29) #default 0
 
 
 class TIGREDataset(Dataset):
@@ -352,8 +352,6 @@ class TIGREDataset(Dataset):
                 
 
                 #shift ray origin to account for tilt angle (aligning object with parallel beams)
-                #rays_o = torch.sum(torch.matmul(pose[:3, :3], torch.stack([uu, vv, torch.zeros_like(uu)], -1)[..., None]), -1) 
-
 
                 rays_o[:, :, 2] += np.tan(tilt_angle) * self.geo.DSO  # Adjust origin in z-axis
                 import open3d as o3d
