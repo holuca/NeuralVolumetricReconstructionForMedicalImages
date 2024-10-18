@@ -217,7 +217,7 @@ class ConeGeometry(object):
         self.filter = data["filter"]
 
         self.magnification = 1
-        self.tilt_angle = data.get("tilt_angle", 29) #default 0
+        self.tilt_angle = data.get("tilt_angle", 80) #default 0
 
 
 class TIGREDataset(Dataset):
@@ -317,7 +317,6 @@ class TIGREDataset(Dataset):
         """
         Get rays given one angle and x-ray machine geometry.
         """
-
         W, H = geo.nDetector
         DSD = geo.DSD
         rays = []
@@ -341,25 +340,58 @@ class TIGREDataset(Dataset):
                 #poseray = plot_camera_pose(pose.cpu().detach().numpy())
                 #o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
             elif geo.mode == "parallel":
+
+        
                 i, j = torch.meshgrid(torch.linspace(0, W - 1, W, device=device),
                                         torch.linspace(0, H - 1, H, device=device), indexing="ij")  # pytorch"s meshgrid has indexing="ij"
                 uu = (i.t() + 0.5 - W / 2) * geo.dDetector[0] + geo.offDetector[0]
                 vv = (j.t() + 0.5 - H / 2) * geo.dDetector[1] + geo.offDetector[1]
                 dirs = torch.stack([torch.zeros_like(uu), torch.zeros_like(uu), torch.ones_like(uu)], -1)
                 rays_d = torch.sum(torch.matmul(pose[:3,:3], dirs[..., None]).to(device), -1) # pose[:3, :3] * 
+                rays_o = torch.sum(torch.matmul(pose[:3,:3], torch.stack([uu,vv,torch.zeros_like(uu)],-1)[..., None]).to(device), -1) + pose[:3, -1].expand(rays_d.shape)
+
 
                 #shift ray origin to account for tilt angle (aligning object with parallel beams)
-                #translation = np.tan(tilt_angle) * geo.DSO
-                translation = geo.DSO * -np.sin(tilt_angle)
-                rays_o = torch.sum(torch.matmul(pose[:3,:3], torch.stack([uu,vv,torch.zeros_like(uu)],-1)[..., None]).to(device), -1) + pose[:3, -1].expand(rays_d.shape)
-                rays_o[:, :, 2] += translation
+                #translation = np.sin(tilt_angle) * geo.DSO
+                #object_length = geo.sVoxel[2] # length along the z-axis
+#
+                #translation = geo.DSO* np.sin(tilt_angle) #- (object_length/2 + object_length/2 * np.tan(tilt_angle)) #
+#
+#
+                ## Calculate the translation based on tilt angle
+                ##translation = np.sin(tilt_angle) * geo.DSO - (geo.sVoxel[2] / 2) * np.sin(tilt_angle)
+#
+                ## Calculate ray origins
+                #rays_o = torch.sum(torch.matmul(pose[:3, :3], torch.stack([uu, vv, torch.zeros_like(uu)], -1)[..., None]).to(device), -1) + pose[:3, -1].expand(rays_d.shape)
+                #rays_o[:, :, 2] -= translation  # Shift along the z-axis
 
                
+
+
+                ## Print the origin of the center ray and camera pose to compare
+                #rays_o_np = rays_o.cpu().detach().numpy()  # Convert to NumPy for printing
+                ## Access the central ray origin
+                #center_ray_origin = rays_o_np[64, 64]  # Accessing the ray at (64, 64)
+                #print(f"Central Ray Origin = (x: {center_ray_origin[0]:.3f}, y: {center_ray_origin[1]:.3f}, z: {center_ray_origin[2]:.3f})")
+                #camera_position = pose[:3, -1]  # Extract camera position from the pose
+                #print(f"Camera Position:     (x: {camera_position[0]:.3f}, y: {camera_position[1]:.3f}, z: {camera_position[2]:.3f})")
+                center_i, center_j = W // 2, H // 2  # Center pixel indices
+                central_ray_origin = rays_o[center_i, center_j]  # Get the origin of the central ray
+            
+                # Update only the Z-axis of the camera pose
+                #####pose[2, -1] = central_ray_origin[2]  # Set Z position to the central ray origin's Z
+
+
+                # Update pose for visualization
+                #camera_position = pose[:3, -1] + torch.tensor([0, 0, translation], device=device)
+                #camera_position = pose[:3, -1].to(device) + torch.tensor([0, 0, translation], device=device)  # Correctly apply translation
+
+                # Visualization
                 import open3d as o3d
-                cube1 = plot_cube(np.zeros((3,1)), geo.sVoxel[...,np.newaxis])
-                cube2 = plot_cube(np.zeros((3,1)), np.ones((3,1))*geo.DSO*2)
+                cube1 = plot_cube(np.zeros((3, 1)), geo.sVoxel[..., np.newaxis])
+                cube2 = plot_cube(np.zeros((3, 1)), np.ones((3, 1)) * geo.DSO * 2)
                 rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
-                poseray = plot_camera_pose(pose.cpu().detach().numpy())
+                poseray = plot_camera_pose(pose.cpu().detach().numpy())  # Use updated camera position
                 o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
 
             else:
@@ -415,7 +447,14 @@ class TIGREDataset(Dataset):
         #rot = np.dot(np.dot(np.dot(R4, R3), R2), R1)
         rot = np.dot(np.dot(R3, R2), R1)
         rot = rot @ R4_x_clockwise
-        trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), 0])
+
+        object_length = self.geo.sVoxel[2]  # Length along z-axis
+        translation_z = DSO * np.tan(tilt_angle)
+        # Translation vector to place the x-ray source at DSO distance, and account for tilt
+        trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), translation_z])
+
+
+        #trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), 0]) #when cosidering dome shape
         T = np.eye(4)
         T[:-1, :-1] = rot
         T[:-1, -1] = trans
