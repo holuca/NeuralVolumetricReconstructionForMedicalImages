@@ -7,7 +7,6 @@ import torch.nn.functional as F
 
 from torch.utils.data import DataLoader, Dataset
 
-#asdfasdfasdf
 
 
 import numpy as np
@@ -348,12 +347,14 @@ class TIGREDataset(Dataset):
                 vv = (j.t() + 0.5 - H / 2) * geo.dDetector[1] + geo.offDetector[1]
                 dirs = torch.stack([torch.zeros_like(uu), torch.zeros_like(uu), torch.ones_like(uu)], -1)
                 rays_d = torch.sum(torch.matmul(pose[:3,:3], dirs[..., None]).to(device), -1) # pose[:3, :3] * 
-                rays_o = torch.sum(torch.matmul(pose[:3,:3], torch.stack([uu,vv,torch.zeros_like(uu)],-1)[..., None]).to(device), -1) + pose[:3, -1].expand(rays_d.shape)
-                
 
                 #shift ray origin to account for tilt angle (aligning object with parallel beams)
+                #translation = np.tan(tilt_angle) * geo.DSO
+                translation = geo.DSO * -np.sin(tilt_angle)
+                rays_o = torch.sum(torch.matmul(pose[:3,:3], torch.stack([uu,vv,torch.zeros_like(uu)],-1)[..., None]).to(device), -1) + pose[:3, -1].expand(rays_d.shape)
+                rays_o[:, :, 2] += translation
 
-                rays_o[:, :, 2] += np.tan(tilt_angle) * self.geo.DSO  # Adjust origin in z-axis
+               
                 import open3d as o3d
                 cube1 = plot_cube(np.zeros((3,1)), geo.sVoxel[...,np.newaxis])
                 cube2 = plot_cube(np.zeros((3,1)), np.ones((3,1))*geo.DSO*2)
@@ -392,6 +393,11 @@ class TIGREDataset(Dataset):
         R4_y = np.array([[np.cos(tilt_angle), 0.0, np.sin(tilt_angle)],
                     [0.0, 0.0, 1.0],
                     [-np.sin(tilt_angle), 0.0, np.cos(tilt_angle)]])
+
+        # Y-axis tilt (laminographic tilt)
+        R4 = np.array([[1, 0, 0],
+                            [0, np.cos(tilt_angle), -np.sin(tilt_angle)],
+                            [0, np.sin(tilt_angle), np.cos(tilt_angle)]])
         
         R4_z = np.array([[np.cos(tilt_angle), -np.sin(tilt_angle), 0],
                [np.sin(tilt_angle), np.cos(tilt_angle), 0],
@@ -400,11 +406,15 @@ class TIGREDataset(Dataset):
                    [0, np.cos(tilt_angle), -np.sin(tilt_angle)],
                    [0, np.sin(tilt_angle), np.cos(tilt_angle)]])
 
-        
+        R4_x_clockwise = np.array([[1, 0, 0],
+                           [0, np.cos(tilt_angle), np.sin(tilt_angle)],
+                           [0, -np.sin(tilt_angle), np.cos(tilt_angle)]])
 
         #translation vector T places x-ray source at a distance DSO from the centerof the object
-        #source is rotated around the object asthe angle changes, simulation rotation during the tomography scan.
-        rot = np.dot(np.dot(np.dot(R4_x, R3), R2), R1)
+        #source is rotated around the object as the angle changes, simulation rotation during the tomography scan.
+        #rot = np.dot(np.dot(np.dot(R4, R3), R2), R1)
+        rot = np.dot(np.dot(R3, R2), R1)
+        rot = rot @ R4_x_clockwise
         trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), 0])
         T = np.eye(4)
         T[:-1, :-1] = rot
