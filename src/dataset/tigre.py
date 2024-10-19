@@ -3,6 +3,7 @@ import pickle
 import os
 import sys
 import numpy as np
+import torch.nn.functional as F
 
 from torch.utils.data import DataLoader, Dataset
 
@@ -15,14 +16,13 @@ class ConeGeometry(object):
 
         # VARIABLE                                          DESCRIPTION                    UNITS
         # -------------------------------------------------------------------------------------
-        #self.DSD = data["DSD"]/1000 # Distance Source Detector      (m) 
-        self.DSD = sys.maxsize/1000 # Distance Source Detector      (m)                                        ----> Detector to Origin Distance same                           
-        self.DSO = data["DSO"]/1000  # Distance Source Origin        (m)                                    ----> infinity/large value to simluate parallel X-rays=?
+        self.DSD = data["DSD"]/1000 # Distance Source Detector      (m) 
+        self.DSO = data["DSO"]/1000  # Distance Source Origin        (m)  (to inf for parallel)
         # Detector parameters
-        self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
-        #self.nDetector = np.array([512, 512])
-        self.dDetector = np.array(data["dDetector"])/1000  # size of each pixel            (m)
-        #self.dDetector = np.array([0.0007,0.0007])
+        #self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
+        self.nDetector = np.array([128, 128]) 
+        self.dDetector = np.array(data["dDetector"])/1000  * np.sqrt(2)# size of each pixel      (m)    --> sqrt 2 as for parallel beam diagonal needs to be included
+
         self.sDetector = self.nDetector * self.dDetector  # total size of the detector    (m)
         # Image parameters
         self.nVoxel = np.array(data["nVoxel"])  # number of voxels              (vx)
@@ -36,13 +36,11 @@ class ConeGeometry(object):
 
         # Auxiliary
         self.accuracy = data["accuracy"]  # Accuracy of FWD proj          (vx/sample)  # noqa: E501
-        # Mode
-        #self.mode = data["mode"]  # parallel, cone                ...
-        self.mode = 'parallel'
+        self.mode = 'parallel' # Mode parallel, cone    
         self.filter = data["filter"]
 
         self.magnification = 1
-        self.tilt_angle = data.get("tilt_angle", 29) #default 29
+        self.tilt_angle = data.get("tilt_angle", 0) #default 0
 
 
 class TIGREDataset(Dataset):
@@ -59,12 +57,16 @@ class TIGREDataset(Dataset):
         self.type = type
         self.n_rays = n_rays
         self.near, self.far = self.get_near_far(self.geo)
-        self.tilt_angle = data.get("tilt_angle", 0)
-    
+
+        
+
         if type == "train":
             self.projs = torch.tensor(data["train"]["projections"], dtype=torch.float32, device=device)
+            print("Shape of the first projection of train function ", self.projs[0].shape)
+            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(self.geo.nDetector[0], self.geo.nDetector[1]), mode='bilinear', align_corners=False).squeeze(1)
+            #print("Shape of the first projection of train function after rehsaping", self.projs[0].shape)
             angles = data["train"]["angles"]
-            rays = self.get_rays(angles, self.tilt_angle, self.geo, device)
+            rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)
             self.n_samples = data["numTrain"]
             coords = torch.stack(torch.meshgrid(torch.linspace(0, self.geo.nDetector[1] - 1, self.geo.nDetector[1], device=device),
@@ -72,14 +74,22 @@ class TIGREDataset(Dataset):
             self.coords = torch.reshape(coords, [-1, 2])
             self.image = torch.tensor(data["image"], dtype=torch.float32, device=device)
             self.voxels = torch.tensor(self.get_voxels(self.geo), dtype=torch.float32, device=device)
+            # Rescale the voxels to match your desired shape (e.g., 128x128x128 or 256x256x256)
+            #self.voxels = F.interpolate(self.voxels.unsqueeze(0), size=(256, 256, 256), mode='trilinear', align_corners=False).squeeze(0)
+
         elif type == "val":
             self.projs = torch.tensor(data["val"]["projections"], dtype=torch.float32, device=device)
+            #print("Shape of the first projection: ", self.projs[0].shape)
+            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(self.geo.nDetector[0], self.geo.nDetector[1]), mode='bilinear', align_corners=False).squeeze(1)
             angles = data["val"]["angles"]
-            rays = self.get_rays(angles, self.tilt_angle, self.geo, device)
+            rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)
             self.n_samples = data["numVal"]
             self.image = torch.tensor(data["image"], dtype=torch.float32, device=device)
             self.voxels = torch.tensor(self.get_voxels(self.geo), dtype=torch.float32, device=device)
+
+    
+
         
     def __len__(self):
         return self.n_samples
@@ -116,72 +126,16 @@ class TIGREDataset(Dataset):
                         np.linspace(-s2, s2, n2),
                         np.linspace(-s3, s3, n3), indexing="ij")
         voxel = np.asarray(xyz).transpose([1, 2, 3, 0])
+
         return voxel
     
 
-    def get_rays1(self, angles, geo, device):
-        """
-        Custom method to calculate rays for laminography using TIGRE geometry but applying a tilt.
-        """
-        W, H = geo.nDetector  # Detector size (width and height)
-        DSD = geo.DSD         # Distance source to detector
-        DSO = geo.DSO         # Distance source to object
-        
-        tilt_angle = self.tilt_angle  # Tilt angle (specified during initialization)
-        
-        # Tilt matrix for laminography
-        tilt_matrix = torch.tensor([[1, 0, 0],
-                                    [0, np.cos(tilt_angle), -np.sin(tilt_angle)],
-                                    [0, np.sin(tilt_angle), np.cos(tilt_angle)]], device=device)
-        
-        rays = []
-        for angle in angles:
-            pose = torch.tensor(self.angle2pose(DSO, angle)).to(device)  # Camera pose matrix based on angle
-            
-            rays_o, rays_d = None, None
-            if geo.mode == "cone":
-                # Generate rays for cone-beam setup (TIGRE-based)
-                i, j = torch.meshgrid(torch.linspace(0, W - 1, W, device=device),
-                                      torch.linspace(0, H - 1, H, device=device), indexing="ij")
-                uu = (i.t() + 0.5 - W / 2) * geo.dDetector[0] + geo.offDetector[0]
-                vv = (j.t() + 0.5 - H / 2) * geo.dDetector[1] + geo.offDetector[1]
-                dirs = torch.stack([uu / DSD, vv / DSD, torch.ones_like(uu)], -1)
-                
-                # Apply tilt to the ray directions
-                dirs = torch.matmul(dirs, tilt_matrix.T)
-                
-                rays_d = torch.sum(torch.matmul(pose[:3, :3], dirs[..., None]).to(device), -1)
-                rays_o = pose[:3, -1].expand(rays_d.shape)  # Origin stays at source position
-
-            elif geo.mode == "parallel":
-                # Generate rays for parallel-beam setup (TIGRE-based)
-                i, j = torch.meshgrid(torch.linspace(0, W - 1, W, device=device),
-                                      torch.linspace(0, H - 1, H, device=device), indexing="ij")
-                uu = (i.t() + 0.5 - W / 2) * geo.dDetector[0] + geo.offDetector[0]
-                vv = (j.t() + 0.5 - H / 2) * geo.dDetector[1] + geo.offDetector[1]
-                dirs = torch.stack([torch.zeros_like(uu), torch.zeros_like(uu), torch.ones_like(uu)], -1)
-                
-               
-
-                # Apply tilt to the ray directions
-                dirs = torch.matmul(dirs, tilt_matrix.T)
-                rays_d = torch.sum(torch.matmul(pose[:3, :3], dirs[..., None]).to(device), -1)
-                rays_o = torch.sum(torch.matmul(pose[:3, :3], torch.stack([uu, vv, torch.zeros_like(uu)], -1)[..., None]).to(device), -1) + pose[:3, -1].expand(rays_d.shape)
-            
-            else:
-                raise NotImplementedError("Unknown scanner type!")
-            
-            # Append rays for each angle
-            rays.append(torch.cat([rays_o, rays_d], dim=-1))
-        
-        return torch.stack(rays, dim=0)
 
     
     def get_rays(self, angles, tilt_angle, geo: ConeGeometry, device):
         """
         Get rays given one angle and x-ray machine geometry.
         """
-
         W, H = geo.nDetector
         DSD = geo.DSD
         rays = []
@@ -197,7 +151,16 @@ class TIGREDataset(Dataset):
                 dirs = torch.stack([uu / DSD, vv / DSD, torch.ones_like(uu)], -1)
                 rays_d = torch.sum(torch.matmul(pose[:3,:3], dirs[..., None]).to(device), -1) # pose[:3, :3] * 
                 rays_o = pose[:3, -1].expand(rays_d.shape)
+
+                #import open3d as o3d
+                #cube1 = plot_cube(np.zeros((3,1)), geo.sVoxel[...,np.newaxis])
+                #cube2 = plot_cube(np.zeros((3,1)), np.ones((3,1))*geo.DSO*2)
+                #rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
+                #poseray = plot_camera_pose(pose.cpu().detach().numpy())
+                #o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
             elif geo.mode == "parallel":
+
+        
                 i, j = torch.meshgrid(torch.linspace(0, W - 1, W, device=device),
                                         torch.linspace(0, H - 1, H, device=device), indexing="ij")  # pytorch"s meshgrid has indexing="ij"
                 uu = (i.t() + 0.5 - W / 2) * geo.dDetector[0] + geo.offDetector[0]
@@ -207,14 +170,30 @@ class TIGREDataset(Dataset):
                 rays_o = torch.sum(torch.matmul(pose[:3,:3], torch.stack([uu,vv,torch.zeros_like(uu)],-1)[..., None]).to(device), -1) + pose[:3, -1].expand(rays_d.shape)
 
 
-                # import open3d as o3d
-                # from src.util.draw_util import plot_rays, plot_cube, plot_camera_pose
-                # cube1 = plot_cube(np.zeros((3,1)), geo.sVoxel[...,np.newaxis])
-                # cube2 = plot_cube(np.zeros((3,1)), np.ones((3,1))*geo.DSO*2)
-                # rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
-                # poseray = plot_camera_pose(pose.cpu().detach().numpy())
-                # o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
-            
+                ## Print the origin of the center ray and camera pose to compare
+
+                #rays_o_np = rays_o.cpu().detach().numpy()  # Convert to NumPy for printing
+                ## Access the central ray origin
+                #center_ray_origin = rays_o_np[64, 64]  # Accessing the ray at (64, 64)
+                #print(f"Central Ray Origin = (x: {center_ray_origin[0]:.3f}, y: {center_ray_origin[1]:.3f}, z: {center_ray_origin[2]:.3f})")
+                #camera_position = pose[:3, -1]  # Extract camera position from the pose
+                #print(f"Camera Position:     (x: {camera_position[0]:.3f}, y: {camera_position[1]:.3f}, z: {camera_position[2]:.3f})")
+                #center_i, center_j = W // 2, H // 2  # Center pixel indices
+                #central_ray_origin = rays_o[center_i, center_j]  # Get the origin of the central ray
+                ## Update only the Z-axis of the camera pose
+                #pose[2, -1] = central_ray_origin[2]  # Set Z position to the central ray origin's Z
+                # Update pose for visualization
+                #camera_position = pose[:3, -1] + torch.tensor([0, 0, translation], device=device)
+                #camera_position = pose[:3, -1].to(device) + torch.tensor([0, 0, translation], device=device)  # Correctly apply translation
+
+                # Visualization
+                #import open3d as o3d
+                #cube1 = plot_cube(np.zeros((3, 1)), geo.sVoxel[..., np.newaxis])
+                #cube2 = plot_cube(np.zeros((3, 1)), np.ones((3, 1)) * geo.DSO * 2)
+                #rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
+                #poseray = plot_camera_pose(pose.cpu().detach().numpy())  # Use updated camera position
+                #o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
+
             else:
                 raise NotImplementedError("Unknown CT scanner type!")
             rays.append(torch.concat([rays_o, rays_d], dim=-1))
@@ -243,44 +222,29 @@ class TIGREDataset(Dataset):
 
         #Add tilt angle (y axis)
         tilt_angle = np.radians(tilt_angle)
-        R4_y = np.array([[np.cos(tilt_angle), 0.0, np.sin(tilt_angle)],
-                    [0.0, 0.0, 1.0],
-                    [-np.sin(tilt_angle), 0.0, np.cos(tilt_angle)]])
-
-        R4 = np.array([[1, 0, 0],
-                   [0, np.cos(tilt_angle), -np.sin(tilt_angle)],
-                   [0, np.sin(tilt_angle), np.cos(tilt_angle)]])
-
-        
+    
+        R4_x_clockwise = np.array([[1, 0, 0],
+                           [0, np.cos(tilt_angle), np.sin(tilt_angle)],
+                           [0, -np.sin(tilt_angle), np.cos(tilt_angle)]])
 
         #translation vector T places x-ray source at a distance DSO from the centerof the object
-        #source is rotated around the object asthe angle changes, simulation rotation during the tomography scan.
-        rot = np.dot(np.dot(np.dot(R4, R3), R2), R1)
-        trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), 0])
-        T = np.eye(4)
-        T[:-1, :-1] = rot
-        T[:-1, -1] = trans
-        return T
-
-
-    def angle2pose1(self, DSO, angle, tilt_angle):
-        phi1 = -np.pi / 2
-        R1 = np.array([[1.0, 0.0, 0.0],
-                    [0.0, np.cos(phi1), -np.sin(phi1)],
-                    [0.0, np.sin(phi1), np.cos(phi1)]])
-        phi2 = np.pi / 2
-        R2 = np.array([[np.cos(phi2), -np.sin(phi2), 0.0],
-                    [np.sin(phi2), np.cos(phi2), 0.0],
-                    [0.0, 0.0, 1.0]])
-        R3 = np.array([[np.cos(angle), -np.sin(angle), 0.0],
-                    [np.sin(angle), np.cos(angle), 0.0],
-                    [0.0, 0.0, 1.0]])
+        #source is rotated around the object as the angle changes, simulation rotation during the tomography scan.
+        #rot = np.dot(np.dot(np.dot(R4, R3), R2), R1)
         rot = np.dot(np.dot(R3, R2), R1)
-        trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), 0])
+        rot = rot @ R4_x_clockwise
+
+        translation_z = DSO * np.tan(tilt_angle)
+        # Translation vector to place the x-ray source at DSO distance, and account for tilt
+        trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), translation_z])
+
+
+        #trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), 0]) #when cosidering dome shape
         T = np.eye(4)
         T[:-1, :-1] = rot
         T[:-1, -1] = trans
         return T
+
+
 
     def get_near_far(self, geo: ConeGeometry, tolerance=0.005):
         """
@@ -294,22 +258,3 @@ class TIGREDataset(Dataset):
         near = np.max([0, geo.DSO - dist_max - tolerance])
         far = np.min([geo.DSO * 2, geo.DSO + dist_max + tolerance])
         return near, far
-
-
-''' DATA SHOULD LOOK SMH like this
-data = {
-    "DSD": 1500,  # Example distance source-detector
-    "DSO": 1000,  # Example distance source-origin
-    "nDetector": [512, 512],  # Example detector resolution
-    "dDetector": [0.8, 0.8],  # Example detector pixel size
-    "nVoxel": [256, 256, 256],  # Example voxel resolution
-    "dVoxel": [1, 1, 1],  # Example voxel size
-    "offOrigin": [0, 0, 0],  # Example image offset
-    "offDetector": [0, 0, 0],  # Example detector offset
-    "accuracy": 0.5,  # Example accuracy
-    "mode": "cone",  # Cone-beam CT
-    "filter": "ram-lak",  # Example filter
-    "tilt_angle": 20,  # 20 degree tilt for laminography
-}
-
-'''
