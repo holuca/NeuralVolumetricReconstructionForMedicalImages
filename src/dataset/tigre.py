@@ -198,7 +198,7 @@ class ConeGeometry(object):
         # Detector parameters
         #self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
         self.nDetector = np.array([128, 128])
-        self.dDetector = np.array(data["dDetector"])/1000 * np.sqrt(2) # size of each pixel      (m)    --> sqrt 2 as for parallel beam diagonal needs to be included
+        self.dDetector = np.array(data["dDetector"])/1000 * np.sqrt(3) # size of each pixel      (m)    --> sqrt 2 as for parallel beam diagonal needs to be included
 
         self.sDetector = self.nDetector * self.dDetector  # total size of the detector    (m)
         # Image parameters
@@ -217,7 +217,7 @@ class ConeGeometry(object):
         self.filter = data["filter"]
 
         self.magnification = 1
-        self.tilt_angle = data.get("tilt_angle", 80) #default 0
+        self.tilt_angle = data.get("tilt_angle", 0) #default 0
 
 
 class TIGREDataset(Dataset):
@@ -387,12 +387,12 @@ class TIGREDataset(Dataset):
                 #camera_position = pose[:3, -1].to(device) + torch.tensor([0, 0, translation], device=device)  # Correctly apply translation
 
                 # Visualization
-                import open3d as o3d
-                cube1 = plot_cube(np.zeros((3, 1)), geo.sVoxel[..., np.newaxis])
-                cube2 = plot_cube(np.zeros((3, 1)), np.ones((3, 1)) * geo.DSO * 2)
-                rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
-                poseray = plot_camera_pose(pose.cpu().detach().numpy())  # Use updated camera position
-                o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
+                #import open3d as o3d
+                #cube1 = plot_cube(np.zeros((3, 1)), geo.sVoxel[..., np.newaxis])
+                #cube2 = plot_cube(np.zeros((3, 1)), np.ones((3, 1)) * geo.DSO * 2)
+                #rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
+                #poseray = plot_camera_pose(pose.cpu().detach().numpy())  # Use updated camera position
+                #o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
 
             else:
                 raise NotImplementedError("Unknown CT scanner type!")
@@ -430,13 +430,6 @@ class TIGREDataset(Dataset):
         R4 = np.array([[1, 0, 0],
                             [0, np.cos(tilt_angle), -np.sin(tilt_angle)],
                             [0, np.sin(tilt_angle), np.cos(tilt_angle)]])
-        
-        R4_z = np.array([[np.cos(tilt_angle), -np.sin(tilt_angle), 0],
-               [np.sin(tilt_angle), np.cos(tilt_angle), 0],
-               [0, 0, 1]])
-        R4_x = np.array([[1, 0, 0],
-                   [0, np.cos(tilt_angle), -np.sin(tilt_angle)],
-                   [0, np.sin(tilt_angle), np.cos(tilt_angle)]])
 
         R4_x_clockwise = np.array([[1, 0, 0],
                            [0, np.cos(tilt_angle), np.sin(tilt_angle)],
