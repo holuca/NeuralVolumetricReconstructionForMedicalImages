@@ -196,9 +196,9 @@ class ConeGeometry(object):
         self.DSD = data["DSD"]/1000 # Distance Source Detector      (m) 
         self.DSO = data["DSO"]/1000  # Distance Source Origin        (m)  (to inf for parallel)
         # Detector parameters
-        #self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
-        self.nDetector = np.array([128, 128]) 
-        self.dDetector = np.array(data["dDetector"])/1000  * np.sqrt(2)# size of each pixel      (m)    --> sqrt 2 as for parallel beam diagonal needs to be included
+        self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
+        #self.nDetector = np.array([128, 128]) 
+        self.dDetector = np.array(data["dDetector"])/1000 # size of each pixel      (m)    --> sqrt 2 as for parallel beam diagonal needs to be included
 
         self.sDetector = self.nDetector * self.dDetector  # total size of the detector    (m)
         # Image parameters
@@ -240,15 +240,28 @@ class TIGREDataset(Dataset):
         if type == "train":
             self.projs = torch.tensor(data["train"]["projections"], dtype=torch.float32, device=device)
             print("Shape of the first projection of train function ", self.projs[0].shape)
-            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(self.geo.nDetector[0], self.geo.nDetector[1]), mode='bilinear', align_corners=False).squeeze(1)
+            #self.projs = F.interpolate(self.projs.unsqueeze(1), size=(self.geo.nDetector[0], self.geo.nDetector[1]), mode='bilinear', align_corners=False).squeeze(1)
             #print("Shape of the first projection of train function after rehsaping", self.projs[0].shape)
             angles = data["train"]["angles"]
             rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)
             self.n_samples = data["numTrain"]
+
+                        # Check the shape of the projections (before interpolation)
             coords = torch.stack(torch.meshgrid(torch.linspace(0, self.geo.nDetector[1] - 1, self.geo.nDetector[1], device=device),
                                                 torch.linspace(0, self.geo.nDetector[0] - 1, self.geo.nDetector[0], device=device), indexing="ij"), -1)
+            
+
+#            coords = torch.stack(torch.meshgrid(
+#                torch.linspace(0, self.geo.nDetector[0] - 1, self.geo.nDetector[0], device=device),
+#                torch.linspace(0, self.geo.nDetector[1] - 1, self.geo.nDetector[1], device=device),
+#                indexing="ij"),
+#                -1)
+    
             self.coords = torch.reshape(coords, [-1, 2])
+            # Check the shape of the projections (before interpolation)
+            #print(f"Shape of projections AFTER interpolation: {coords.shape}")
+
             self.image = torch.tensor(data["image"], dtype=torch.float32, device=device)
             self.voxels = torch.tensor(self.get_voxels(self.geo), dtype=torch.float32, device=device)
             # Rescale the voxels to match your desired shape (e.g., 128x128x128 or 256x256x256)
@@ -257,7 +270,7 @@ class TIGREDataset(Dataset):
         elif type == "val":
             self.projs = torch.tensor(data["val"]["projections"], dtype=torch.float32, device=device)
             #print("Shape of the first projection: ", self.projs[0].shape)
-            self.projs = F.interpolate(self.projs.unsqueeze(1), size=(self.geo.nDetector[0], self.geo.nDetector[1]), mode='bilinear', align_corners=False).squeeze(1)
+            ##self.projs = F.interpolate(self.projs.unsqueeze(1), size=(self.geo.nDetector[0], self.geo.nDetector[1]), mode='bilinear', align_corners=False).squeeze(1)
             angles = data["val"]["angles"]
             rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)
@@ -275,10 +288,41 @@ class TIGREDataset(Dataset):
 
     def __getitem__(self, index):
         if self.type == "train":
+            ##print(f"self.projs shape: {self.projs.shape}")
+##
+            ##print(f"Max index for first dimension: {self.projs.shape[0] - 1}")
+            ##print(f"Max index for second dimension: {self.projs.shape[1] - 1}")
+            ##print(f"Max index for third dimension: {self.projs.shape[2] - 1}")
+
             projs_valid = (self.projs[index]>0).flatten()
             coords_valid = self.coords[projs_valid]
             select_inds = np.random.choice(coords_valid.shape[0], size=[self.n_rays], replace=False)
             select_coords = coords_valid[select_inds].long()
+
+            ##print(f"select_coords shape: {select_coords.shape}")
+            ##print(f"select_coords values: {select_coords}")
+            ##print(f"index value: {index}")
+##
+            ##print("##############3")
+            ##print(f"select_coords[:, 0]: {select_coords[:, 0]}")
+            ##print(f"select_coords[:, 1]: {select_coords[:, 1]}")
+            first_dim_valid = (select_coords[:, 0] >= 0) & (select_coords[:, 0] < self.projs.shape[1])
+            second_dim_valid = (select_coords[:, 1] >= 0) & (select_coords[:, 1] < self.projs.shape[2])
+            ###if not torch.all(first_dim_valid):
+            ###    invalid_first_indices = select_coords[~first_dim_valid]
+            ###    print(f"Invalid first indices: {invalid_first_indices}")
+###
+            ###if not torch.all(second_dim_valid):
+            ###    invalid_second_indices = select_coords[~second_dim_valid]
+            ###    print(f"Invalid second indices: {invalid_second_indices}")
+            ###             # Validate index ranges
+
+            
+            # Use torch.all() to ensure all indices are valid
+            assert torch.all(first_dim_valid), "First index out of bounds"
+            assert torch.all(second_dim_valid), "Second index out of bounds"
+
+
             rays = self.rays[index, select_coords[:, 0], select_coords[:, 1]]
             projs = self.projs[index, select_coords[:, 0], select_coords[:, 1]]
             out = {
@@ -387,12 +431,12 @@ class TIGREDataset(Dataset):
                 #camera_position = pose[:3, -1].to(device) + torch.tensor([0, 0, translation], device=device)  # Correctly apply translation
 
                 # Visualization
-                import open3d as o3d
-                cube1 = plot_cube(np.zeros((3, 1)), geo.sVoxel[..., np.newaxis])
-                cube2 = plot_cube(np.zeros((3, 1)), np.ones((3, 1)) * geo.DSO * 2)
-                rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
-                poseray = plot_camera_pose(pose.cpu().detach().numpy())  # Use updated camera position
-                o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
+                #import open3d as o3d
+                #cube1 = plot_cube(np.zeros((3, 1)), geo.sVoxel[..., np.newaxis])
+                #cube2 = plot_cube(np.zeros((3, 1)), np.ones((3, 1)) * geo.DSO * 2)
+                #rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
+                #poseray = plot_camera_pose(pose.cpu().detach().numpy())  # Use updated camera position
+                #o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
 
             else:
                 raise NotImplementedError("Unknown CT scanner type!")

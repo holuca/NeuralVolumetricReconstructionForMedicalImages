@@ -32,16 +32,6 @@ def get_psnr(x, y):
 
 def get_psnr_3d(arr1, arr2, size_average=True, PIXEL_MAX=1.0):
 
-    ###
-
-    # Check for size mismatch and rescale if needed
-    if arr1.shape != arr2.shape:
-        target_size = min(arr1.shape[-1], arr2.shape[-1])  # Choose the smallest size to match
-        arr1 = F.interpolate(arr1.unsqueeze(0), size=(target_size, target_size, target_size), mode='trilinear', align_corners=False).squeeze(0)
-        arr2 = F.interpolate(arr2.unsqueeze(0), size=(target_size, target_size, target_size), mode='trilinear', align_corners=False).squeeze(0)
-
-
-    ###
     """
     :param arr1:
         Format-[NDHW], OriImage [0,1]
