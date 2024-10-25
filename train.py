@@ -60,7 +60,6 @@ class BasicTrainer(Trainer):
         projs = self.eval_dset.projs[select_ind]
         rays = self.eval_dset.rays[select_ind].reshape(-1, 8)
         H, W = projs.shape
-        #H, W = [512, 512]
         projs_pred = []
         for i in range(0, rays.shape[0], self.n_rays):
             projs_pred.append(render(rays[i:i+self.n_rays], self.net, self.net_fine, **self.conf["render"])["acc"])
