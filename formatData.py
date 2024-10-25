@@ -3,13 +3,22 @@ import pickle
 
 projections_chip = np.load("./data/lamino_chip.npy")
 
-# Step 1: Define the attributes
+
+# Calculate max values for normalization
+max_lamino = projections_chip.max()
+max_chest = 0.06712057  # Maximum value in CHEST data
+
+# Normalize lamino to the CHEST range
+lamino_normalized = (projections_chip / max_lamino) * max_chest
+
+
+
 data = {
     'numTrain': 50,
     'numVal': 50,
     'DSD': 1500.0,  # Distance Source to Detector
     'DSO': 1000.0,  # Distance Source to Object
-    'nDetector': [128, 175],  # Number of detector elements
+    'nDetector': [128, 175],  # Number of detector elements (will be transposed later)
     'dDetector': [1.0, 1.0],  # Size of detector elements
     'nVoxel': [175, 128, 128],  # Number of voxels
     'dVoxel': [1.0, 1.0, 1.0],  # Voxel size
@@ -26,18 +35,18 @@ data = {
     'rescale_intercept': 0.0,  # Rescale intercept
     'normalize': True,  # If the data is normalized
     'noise': 0,  # Noise level
-    'tilt_angle': 29,
+    'tilt_angle': 0,
     'image': np.zeros((175, 128, 128), dtype=np.float32),  # Placeholder 3D image
     'train': {
         'angles': np.linspace(0, 2 * np.pi, 360, endpoint=False),  # 360 projections equally spaced
-        'projections': projections_chip,  # Use your original projections from the npy file
+        'projections': lamino_normalized,  # projections from npy file
     },
     'val': {
         'angles': np.linspace(0, 2 * np.pi, 360, endpoint=False),  # 360 projections equally spaced
-        'projections': projections_chip,  # Use your original projections from the npy file
+        'projections': lamino_normalized,  # projections from npy file
     }
 }
 
 
-with open('created_pickle_file.pickle', 'wb') as f:
+with open('./data/tomo_projection_parallel.pickle', 'wb') as f:
     pickle.dump(data, f)

@@ -58,15 +58,8 @@ class BasicTrainer(Trainer):
         # Evaluate projection
         select_ind = np.random.choice(len(self.eval_dset))
         projs = self.eval_dset.projs[select_ind]
-        ## Resize projs (ground truth) to match projs_pred size (128x128)
-        #projs = F.interpolate(projs.unsqueeze(0).unsqueeze(0), size=(128, 128), mode='bilinear', align_corners=False)
-        #projs = projs.squeeze(0).squeeze(0)  # Remove the extra dimensions
         rays = self.eval_dset.rays[select_ind].reshape(-1, 8)
         H, W = projs.shape
-        #H, W = self.eval_dset.geo.nDetector
-        print(f"Number of rays: {rays.shape[0]}")
-        print("H: ", H)
-        #H, W = [128, 128]
         projs_pred = []
         for i in range(0, rays.shape[0], self.n_rays):
             projs_pred.append(render(rays[i:i+self.n_rays], self.net, self.net_fine, **self.conf["render"])["acc"])
@@ -112,7 +105,50 @@ class BasicTrainer(Trainer):
                 f.write("%s: %f\n" % (key, value.item()))
 
         return loss
+    
 
+    def eval_step1(self, global_step, idx_epoch):
+        """
+        Evaluation step - outputs only predicted projection and density
+        """
+        # Evaluate projection
+        select_ind = np.random.choice(len(self.eval_dset))
+        rays = self.eval_dset.rays[select_ind].reshape(-1, 8)
+        H, W = self.eval_dset.projs.shape[1:3]  # Get the projection dimensions
+        # Get prediction for projection
+        projs_pred = []
+        for i in range(0, rays.shape[0], self.n_rays):
+            projs_pred.append(render(rays[i:i+self.n_rays], self.net, self.net_fine, **self.conf["render"])["acc"])
+        projs_pred = torch.cat(projs_pred, 0).reshape(H, W)
+
+        # Get prediction for density
+        image_pred = run_network(self.eval_dset.voxels, self.net_fine if self.net_fine is not None else self.net, self.netchunk)
+        image_pred = image_pred.squeeze()
+
+        # Logging and saving - only predictions
+        show_slice = 5
+        show_step = image_pred.shape[-1] // show_slice
+        show_image_pred = image_pred[..., ::show_step]
+        show_density_pred = torch.concat([show_image_pred[..., i_show] for i_show in range(show_slice)], dim=1)
+        loss = {
+            "proj_mse": 0,
+            "proj_psnr": 0,
+            "psnr_3d": 0,
+            "ssim_3d": 0,
+        }
+
+        # Save predicted density and projection
+        eval_save_dir = osp.join(self.evaldir, f"epoch_{idx_epoch:05d}")
+        os.makedirs(eval_save_dir, exist_ok=True)
+        np.save(osp.join(eval_save_dir, "image_pred.npy"), image_pred.cpu().detach().numpy())
+        iio.imwrite(osp.join(eval_save_dir, "proj_pred.png"), (cast_to_image(projs_pred)*255).astype(np.uint8))
+        iio.imwrite(osp.join(eval_save_dir, "density_pred.png"), (cast_to_image(show_density_pred)*255).astype(np.uint8))
+
+        with open(osp.join(eval_save_dir, "stats.txt"), "w") as f: 
+            for key, value in loss.items(): 
+                f.write("%s: %f\n" % (key, value.item()))
+
+        return loss
 
 trainer = BasicTrainer()
 trainer.start()

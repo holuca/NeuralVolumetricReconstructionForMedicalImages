@@ -194,11 +194,11 @@ class ConeGeometry(object):
         # VARIABLE                                          DESCRIPTION                    UNITS
         # -------------------------------------------------------------------------------------
         self.DSD = data["DSD"]/1000 # Distance Source Detector      (m) 
-        self.DSO = data["DSO"]/1000  # Distance Source Origin        (m)  (to inf for parallel)
+        self.DSO = data["DSO"]/100  # Distance Source Origin        (m)  (to inf for parallel)
         # Detector parameters
         self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
         #self.nDetector = np.array([128, 128]) 
-        self.dDetector = np.array(data["dDetector"])/1000 # size of each pixel      (m)    --> sqrt 2 as for parallel beam diagonal needs to be included
+        self.dDetector = np.array(data["dDetector"])/1000  # size of each pixel      (m)    --> sqrt 2 as for parallel beam diagonal needs to be included
 
         self.sDetector = self.nDetector * self.dDetector  # total size of the detector    (m)
         # Image parameters
@@ -213,7 +213,7 @@ class ConeGeometry(object):
 
         # Auxiliary
         self.accuracy = data["accuracy"]  # Accuracy of FWD proj          (vx/sample)  # noqa: E501
-        self.mode = 'parallel' # Mode parallel, cone    
+        self.mode = data["mode"] # Mode parallel, cone    
         self.filter = data["filter"]
 
         self.magnification = 1
@@ -241,7 +241,15 @@ class TIGREDataset(Dataset):
             self.projs = torch.tensor(data["train"]["projections"], dtype=torch.float32, device=device)
             print("Shape of the first projection of train function ", self.projs[0].shape)
             #self.projs = F.interpolate(self.projs.unsqueeze(1), size=(self.geo.nDetector[0], self.geo.nDetector[1]), mode='bilinear', align_corners=False).squeeze(1)
+
+            #if resizing of nDetector is done manually in ConeGemoetry, use this interpolation
             #print("Shape of the first projection of train function after rehsaping", self.projs[0].shape)
+            self.projs = self.projs.unsqueeze(1)  # Shape now: (360, 1, 175, 128)
+            # Resize using F.interpolate
+            self.projs = F.interpolate(self.projs, size=(self.geo.nDetector[1], self.geo.nDetector[0]), mode='bilinear', align_corners=False)
+            # Remove the channel dimension
+            self.projs = self.projs.squeeze(1)  # Shape should now be (360, nDetector[0], nDetector[1])
+
             angles = data["train"]["angles"]
             rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)
@@ -250,13 +258,7 @@ class TIGREDataset(Dataset):
                         # Check the shape of the projections (before interpolation)
             coords = torch.stack(torch.meshgrid(torch.linspace(0, self.geo.nDetector[1] - 1, self.geo.nDetector[1], device=device),
                                                 torch.linspace(0, self.geo.nDetector[0] - 1, self.geo.nDetector[0], device=device), indexing="ij"), -1)
-            
-
-#            coords = torch.stack(torch.meshgrid(
-#                torch.linspace(0, self.geo.nDetector[0] - 1, self.geo.nDetector[0], device=device),
-#                torch.linspace(0, self.geo.nDetector[1] - 1, self.geo.nDetector[1], device=device),
-#                indexing="ij"),
-#                -1)
+        
     
             self.coords = torch.reshape(coords, [-1, 2])
             # Check the shape of the projections (before interpolation)
@@ -270,7 +272,13 @@ class TIGREDataset(Dataset):
         elif type == "val":
             self.projs = torch.tensor(data["val"]["projections"], dtype=torch.float32, device=device)
             #print("Shape of the first projection: ", self.projs[0].shape)
-            ##self.projs = F.interpolate(self.projs.unsqueeze(1), size=(self.geo.nDetector[0], self.geo.nDetector[1]), mode='bilinear', align_corners=False).squeeze(1)
+            #if resizing of nDetector is done manually in ConeGemoetry, use this interpolation
+            #print("Shape of the first projection of train function after rehsaping", self.projs[0].shape)
+            self.projs = self.projs.unsqueeze(1)  # Shape now: (360, 1, 175, 128)
+            # Resize using F.interpolate
+            self.projs = F.interpolate(self.projs, size=(self.geo.nDetector[1], self.geo.nDetector[0]), mode='bilinear', align_corners=False)
+            # Remove the channel dimension
+            self.projs = self.projs.squeeze(1)  # Shape should now be (360, nDetector[0], nDetector[1])
             angles = data["val"]["angles"]
             rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)

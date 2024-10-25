@@ -1,7 +1,7 @@
 exp:
-  expname: lamino_chip
+  expname: lamino_chip_normalized_DSO100
   expdir: ./logs/
-  datadir: ./data/created_pickle_file.pickle
+  datadir: ./data/lamino_chip_normalized.pickle
 network:
   net_type: mlp
   num_layers: 4
