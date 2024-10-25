@@ -194,11 +194,10 @@ class ConeGeometry(object):
         # VARIABLE                                          DESCRIPTION                    UNITS
         # -------------------------------------------------------------------------------------
         self.DSD = data["DSD"]/1000 # Distance Source Detector      (m) 
-        self.DSO = data["DSO"]/100  # Distance Source Origin        (m)  (to inf for parallel)
+        self.DSO = data["DSO"]/3000  # Distance Source Origin        (m)  (to inf for parallel)
         # Detector parameters
         self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
-        #self.nDetector = np.array([128, 128]) 
-        self.dDetector = np.array(data["dDetector"])/1000  # size of each pixel      (m)    --> sqrt 2 as for parallel beam diagonal needs to be included
+        self.dDetector = np.array(data["dDetector"])/1000 # size of each pixel      (m)    --> sqrt 2 as for parallel beam diagonal needs to be included
 
         self.sDetector = self.nDetector * self.dDetector  # total size of the detector    (m)
         # Image parameters
@@ -385,12 +384,12 @@ class TIGREDataset(Dataset):
                 rays_d = torch.sum(torch.matmul(pose[:3,:3], dirs[..., None]).to(device), -1) # pose[:3, :3] * 
                 rays_o = pose[:3, -1].expand(rays_d.shape)
 
-                import open3d as o3d
-                cube1 = plot_cube(np.zeros((3,1)), geo.sVoxel[...,np.newaxis])
-                cube2 = plot_cube(np.zeros((3,1)), np.ones((3,1))*geo.DSO*2)
-                rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
-                poseray = plot_camera_pose(pose.cpu().detach().numpy())
-                o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
+                #import open3d as o3d
+                #cube1 = plot_cube(np.zeros((3,1)), geo.sVoxel[...,np.newaxis])
+                #cube2 = plot_cube(np.zeros((3,1)), np.ones((3,1))*geo.DSO*2)
+                #rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
+                #poseray = plot_camera_pose(pose.cpu().detach().numpy())
+                #o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
             elif geo.mode == "parallel":
 
         

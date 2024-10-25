@@ -38,15 +38,17 @@ data = {
     'tilt_angle': 0,
     'image': np.zeros((175, 128, 128), dtype=np.float32),  # Placeholder 3D image
     'train': {
-        'angles': np.linspace(0, 2 * np.pi, 360, endpoint=False),  # 360 projections equally spaced
+        'angles': np.linspace(0, 2 * np.pi, 360, endpoint=True),  # 360 projections equally spaced
+        #'angles': np.linspace(0, 180, 180, endpoint=True),  # 360 projections equally spaced
         'projections': lamino_normalized,  # projections from npy file
     },
     'val': {
-        'angles': np.linspace(0, 2 * np.pi, 360, endpoint=False),  # 360 projections equally spaced
+        #'angles': np.linspace(0, 2 * np.pi, 180, endpoint=False),  # 360 projections equally spaced
+        'angles': np.linspace(0, 2 * np.pi, 360, endpoint=True),  # 360 projections equally spaced
         'projections': lamino_normalized,  # projections from npy file
     }
 }
 
 
-with open('./data/tomo_projection_parallel.pickle', 'wb') as f:
+with open('./data/lamino_chip.pickle', 'wb') as f:
     pickle.dump(data, f)
