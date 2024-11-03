@@ -194,7 +194,7 @@ class ConeGeometry(object):
         # VARIABLE                                          DESCRIPTION                    UNITS
         # -------------------------------------------------------------------------------------
         self.DSD = data["DSD"]/1000 # Distance Source Detector      (m) 
-        self.DSO = data["DSO"]/3000  # Distance Source Origin        (m)  (to inf for parallel)
+        self.DSO = data["DSO"]/1000  # Distance Source Origin        (m)  (to inf for parallel)
         # Detector parameters
         self.nDetector = np.array(data["nDetector"])  # number of pixels              (px)
         self.dDetector = np.array(data["dDetector"])/1000 # size of each pixel      (m)    --> sqrt 2 as for parallel beam diagonal needs to be included
@@ -444,7 +444,7 @@ class TIGREDataset(Dataset):
                 #rays1 = plot_rays(rays_d.cpu().detach().numpy(), rays_o.cpu().detach().numpy(), 2)
                 #poseray = plot_camera_pose(pose.cpu().detach().numpy())  # Use updated camera position
                 #o3d.visualization.draw_geometries([cube1, cube2, rays1, poseray])
-
+                
             else:
                 raise NotImplementedError("Unknown CT scanner type!")
             rays.append(torch.concat([rays_o, rays_d], dim=-1))
@@ -465,19 +465,21 @@ class TIGREDataset(Dataset):
         R2 = np.array([[np.cos(phi2), -np.sin(phi2), 0.0],
                     [np.sin(phi2), np.cos(phi2), 0.0],
                     [0.0, 0.0, 1.0]])
+        
         #counterclockwise rotation around z-axis by the current scanning angle
         R3 = np.array([[np.cos(angle), -np.sin(angle), 0.0],
                     [np.sin(angle), np.cos(angle), 0.0],
                     [0.0, 0.0, 1.0]])
         
-
-        #Add tilt angle (y axis)
-        tilt_angle = np.radians(tilt_angle)
+        
+        
+        #Add tilt angle (y axis) and make it negative as the npy files are created that way
+        tilt_angle = - np.radians(tilt_angle)
     
         R4_x_clockwise = np.array([[1, 0, 0],
                            [0, np.cos(tilt_angle), np.sin(tilt_angle)],
                            [0, -np.sin(tilt_angle), np.cos(tilt_angle)]])
-
+        
         #translation vector T places x-ray source at a distance DSO from the centerof the object
         #source is rotated around the object as the angle changes, simulation rotation during the tomography scan.
         #rot = np.dot(np.dot(np.dot(R4, R3), R2), R1)

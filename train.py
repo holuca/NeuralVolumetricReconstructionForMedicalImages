@@ -86,7 +86,7 @@ class BasicTrainer(Trainer):
             show.append(torch.concat([show_image[..., i_show], show_image_pred[..., i_show]], dim=0))
         show_density = torch.concat(show, dim=1)
         show_proj = torch.concat([projs, projs_pred], dim=1)
-
+    
         self.writer.add_image("eval/density (row1: gt, row2: pred)", cast_to_image(show_density), global_step, dataformats="HWC")
         self.writer.add_image("eval/projection (left: gt, right: pred)", cast_to_image(show_proj), global_step, dataformats="HWC")
 
