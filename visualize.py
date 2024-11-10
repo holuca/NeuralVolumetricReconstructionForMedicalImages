@@ -10,13 +10,20 @@ tomography_ROTATED = tomography_projections_gt
 tomography_projections_gt = np.rot90(tomography_projections_gt, k=1, axes=(1, 2))
 
 
+k212 = np.load("./logs/laminography_k212/eval/epoch_00250/image_pred.npy")
+lami_180 = np.load("./logs/laminography_180/eval/epoch_00250/image_pred.npy")
+lami_360 = np.load("./logs/laminography_360/eval/epoch_00250/image_pred.npy")
 
-pred_laminography = np.load("./logs/laminography_4096/eval/epoch_01250/image_pred.npy")
+current = np.load("./logs/laminography/eval/epoch_00250/image_pred.npy")
 viewer = napari.Viewer()
 
 viewer.add_image(tomography_ORIG, name='ORIG', colormap='magma', opacity=0.6)
-viewer.add_image(pred_laminography, name='predicted_lami', colormap='blue', opacity=0.6)
-viewer.add_image(tomography_ROTATED, name='rotated', colormap='gray', opacity=0.6)
+viewer.add_image(lami_180, name='lami_180', colormap='blue', opacity=0.6)
+viewer.add_image(k212, name='k212', colormap='gray', opacity=0.6)
+viewer.add_image(lami_360, name='lami_360', colormap='magma', opacity=0.6)
+
+
+viewer.add_image(current, name='CURRENT', colormap='magma', opacity=0.6)
 #viewer.add_image(laminography_pred, name='lami_pred', colormap='gray', opacity=0.6)
 napari.run()
 

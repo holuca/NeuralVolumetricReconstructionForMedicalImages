@@ -215,7 +215,6 @@ class ConeGeometry(object):
         self.mode = data["mode"] # Mode parallel, cone    
         self.filter = data["filter"]
 
-        self.magnification = 1
         self.tilt_angle = data.get("tilt_angle", 0) #default 0
 
 
@@ -243,11 +242,11 @@ class TIGREDataset(Dataset):
 
             #if resizing of nDetector is done manually in ConeGemoetry, use this interpolation
             #print("Shape of the first projection of train function after rehsaping", self.projs[0].shape)
-            self.projs = self.projs.unsqueeze(1)  # Shape now: (360, 1, 175, 128)
-            # Resize using F.interpolate
-            self.projs = F.interpolate(self.projs, size=(self.geo.nDetector[1], self.geo.nDetector[0]), mode='bilinear', align_corners=False)
-            # Remove the channel dimension
-            self.projs = self.projs.squeeze(1)  # Shape should now be (360, nDetector[0], nDetector[1])
+            #self.projs = self.projs.unsqueeze(1)  # Shape now: (360, 1, 175, 128)
+            ## Resize using F.interpolate
+            #self.projs = F.interpolate(self.projs, size=(self.geo.nDetector[1], self.geo.nDetector[0]), mode='bilinear', align_corners=False)
+            ## Remove the channel dimension
+            #self.projs = self.projs.squeeze(1)  # Shape should now be (360, nDetector[0], nDetector[1])
 
             angles = data["train"]["angles"]
             rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
@@ -451,7 +450,7 @@ class TIGREDataset(Dataset):
 
         return torch.stack(rays, dim=0)
 
-    def angle2pose(self, DSO, angle, tilt_angle):
+    def angle2pose1(self, DSO, angle, tilt_angle):
         phi1 = -np.pi / 2
         #counterclockwise around x-axis (90degrees)
         #aligns detector and source palne with the x-ray system
@@ -485,17 +484,83 @@ class TIGREDataset(Dataset):
         #rot = np.dot(np.dot(np.dot(R4, R3), R2), R1)
         rot = np.dot(np.dot(R3, R2), R1)
         rot = rot @ R4_x_clockwise
-
+        adjuster = 10/1000
         object_length = self.geo.sVoxel[2]  # Length along z-axis
+        #translation_z = DSO * np.tan(tilt_angle) + self.geo.offOrigin[2]
         translation_z = DSO * np.tan(tilt_angle)
         # Translation vector to place the x-ray source at DSO distance, and account for tilt
         trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), translation_z])
 
+        #trans = np.array([
+        #    DSO * np.cos(angle) + self.geo.offOrigin[0],
+        #    DSO * np.sin(angle) + self.geo.offOrigin[1],
+        #    translation_z
+        #])
 
         #trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), 0]) #when cosidering dome shape
         T = np.eye(4)
         T[:-1, :-1] = rot
         T[:-1, -1] = trans
+        return T
+
+
+    def angle2pose(self, DSO, angle, tilt_angle):
+        object_length = self.geo.sVoxel[2]  # Length along z-axis
+        adjuster = 10/1000
+        center_shift = np.array([0, 0, 0])  # Offset origin
+
+        self.geo.nVoxel
+        phi1 = -np.pi / 2
+        R1 = np.array([
+            [1.0, 0.0, 0.0],
+            [0.0, np.cos(phi1), -np.sin(phi1)],
+            [0.0, np.sin(phi1), np.cos(phi1)]
+        ])
+
+        phi2 = np.pi / 2
+        R2 = np.array([
+            [np.cos(phi2), -np.sin(phi2), 0.0],
+            [np.sin(phi2), np.cos(phi2), 0.0],
+            [0.0, 0.0, 1.0]
+        ])
+
+        R3 = np.array([
+            [np.cos(angle), -np.sin(angle), 0.0],
+            [np.sin(angle), np.cos(angle), 0.0],
+            [0.0, 0.0, 1.0]
+        ])
+        
+        tilt_angle = - np.radians(tilt_angle)
+
+        R4_x_clockwise = np.array([
+            [1, 0, 0],
+            [0, np.cos(tilt_angle), np.sin(tilt_angle)],
+            [0, -np.sin(tilt_angle), np.cos(tilt_angle)]
+        ])
+
+        # Convert the 3x3 rotation matrix to 4x4
+        # Extend the 3x3 rotation matrix to 4x4
+        rot_4x4 = np.eye(4)
+        rot_4x4[:-1, :-1] = np.dot(np.dot(R3, R2), R1) @ R4_x_clockwise
+
+        # Step 2: Translation matrices to shift the center of rotation
+        T_shift_to_center = np.eye(4)
+        T_shift_to_center[:-1, -1] = -center_shift  # Shift to new center of rotation
+
+        T_shift_back = np.eye(4)
+        T_shift_back[:-1, -1] = center_shift  # Shift back after rotation
+
+        # Step 3: Combine rotation and shifts
+        T_rotated_with_shift = T_shift_back @ rot_4x4 @ T_shift_to_center
+        # Step 4: Calculate translation for x-ray source, adjusted for tilt
+        translation_z = DSO * np.tan(tilt_angle)
+        trans = np.array([DSO * np.cos(angle), DSO * np.sin(angle), translation_z])
+
+        # Step 5: Construct final transformation matrix
+        T = np.eye(4)
+        T[:-1, :-1] = T_rotated_with_shift[:-1, :-1]
+        T[:-1, -1] = trans + center_shift  # Final translation, adjusted by center shift
+
         return T
 
 
