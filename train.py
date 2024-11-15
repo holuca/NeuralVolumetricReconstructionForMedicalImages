@@ -134,32 +134,48 @@ class BasicTrainer(Trainer):
             "ssim_3d": get_ssim_3d(image_pred, image),
         }
 
-        # Show only the predicted projection
-        show_proj = projs_pred  # No concatenation with ground truth
-
-        # Save each projection in image_pred as separate images
-        eval_save_dir = osp.join(self.evaldir, f"epoch_{idx_epoch:05d}")
-        os.makedirs(eval_save_dir, exist_ok=True)
-
-        for i in range(image_pred.shape[-1]):
-            slice_pred = image_pred[..., i].cpu().detach().numpy()
-            iio.imwrite(osp.join(eval_save_dir, f"slice_{i:03d}_pred.png"), (cast_to_image(slice_pred) * 255).astype(np.uint8))
-
-        # Save the predicted density and projection images
-        np.save(osp.join(eval_save_dir, "image_pred.npy"), image_pred.cpu().detach().numpy())
-        np.save(osp.join(eval_save_dir, "image_gt.npy"), image.cpu().detach().numpy())
-        iio.imwrite(osp.join(eval_save_dir, "proj_pred.png"), (cast_to_image(show_proj) * 255).astype(np.uint8))
-
+        # Horizontal slices
+        show_slice = 5
+        show_step = image.shape[-1] // show_slice
+        show_image = image[..., ::show_step]
+        show_image_pred = image_pred[..., ::show_step]
+        show_horizontal = []
+        for i_show in range(show_slice):
+            show_horizontal.append(torch.concat([show_image[..., i_show], show_image_pred[..., i_show]], dim=0))
+        show_density_horizontal = torch.concat(show_horizontal, dim=1)
+        
+        # Vertical slices
+        show_image_vert = image[:, ::show_step, :]
+        show_image_pred_vert = image_pred[:, ::show_step, :]
+        show_vertical = []
+        for i_show in range(show_slice):
+            show_vertical.append(torch.concat([show_image_vert[:, i_show, :], show_image_pred_vert[:, i_show, :]], dim=0))
+        show_density_vertical = torch.concat(show_vertical, dim=1)
+    
+        # Combine both horizontal and vertical slices
+        show_combined = torch.concat([show_density_horizontal, show_density_vertical], dim=0)
+        show_proj = torch.concat([projs, projs_pred], dim=1)
+    
+        # Log images
+        self.writer.add_image("eval/density (row1-2: gt/pred horizontal, row3-4: gt/pred vertical)", 
+                              cast_to_image(show_combined), global_step, dataformats="HWC")
+        self.writer.add_image("eval/projection (left: gt, right: pred)", cast_to_image(show_proj), global_step, dataformats="HWC")
+    
         # Log metrics
         for ls in loss.keys():
             self.writer.add_scalar(f"eval/{ls}", loss[ls], global_step)
-
-        # Save loss values in text file
-        with open(osp.join(eval_save_dir, "stats.txt"), "w") as f:
+            
+        # Save images and stats
+        eval_save_dir = osp.join(self.evaldir, f"epoch_{idx_epoch:05d}")
+        os.makedirs(eval_save_dir, exist_ok=True)
+        np.save(osp.join(eval_save_dir, "image_pred.npy"), image_pred.cpu().detach().numpy())
+        np.save(osp.join(eval_save_dir, "image_gt.npy"), image.cpu().detach().numpy())
+        iio.imwrite(osp.join(eval_save_dir, "slice_show_combined.png"), (cast_to_image(show_combined) * 255).astype(np.uint8))
+        iio.imwrite(osp.join(eval_save_dir, "proj_show_left_gt_right_pred.png"), (cast_to_image(show_proj) * 255).astype(np.uint8))
+        with open(osp.join(eval_save_dir, "stats.txt"), "w") as f: 
             for key, value in loss.items(): 
                 f.write("%s: %f\n" % (key, value.item()))
 
-        return loss
 
 trainer = BasicTrainer()
 trainer.start()

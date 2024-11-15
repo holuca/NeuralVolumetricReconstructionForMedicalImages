@@ -238,9 +238,12 @@ class TIGREDataset(Dataset):
         if type == "train":
             self.projs = torch.tensor(data["train"]["projections"], dtype=torch.float32, device=device)
             print("Shape of the first projection of train function ", self.projs[0].shape)
+
+            # Uncomment following section if resizing of nDetector is done manually in ConeGemoetry
+
             #self.projs = F.interpolate(self.projs.unsqueeze(1), size=(self.geo.nDetector[0], self.geo.nDetector[1]), mode='bilinear', align_corners=False).squeeze(1)
 
-            #if resizing of nDetector is done manually in ConeGemoetry, use this interpolation
+            
             #print("Shape of the first projection of train function after rehsaping", self.projs[0].shape)
             #self.projs = self.projs.unsqueeze(1)  # Shape now: (360, 1, 175, 128)
             ## Resize using F.interpolate
@@ -270,21 +273,21 @@ class TIGREDataset(Dataset):
         elif type == "val":
             self.projs = torch.tensor(data["val"]["projections"], dtype=torch.float32, device=device)
             #print("Shape of the first projection: ", self.projs[0].shape)
-            #if resizing of nDetector is done manually in ConeGemoetry, use this interpolation
+
+            # Uncomment following section if resizing of nDetector is done manually in ConeGemoetry
+
             #print("Shape of the first projection of train function after rehsaping", self.projs[0].shape)
-            self.projs = self.projs.unsqueeze(1)  # Shape now: (360, 1, 175, 128)
-            # Resize using F.interpolate
-            self.projs = F.interpolate(self.projs, size=(self.geo.nDetector[1], self.geo.nDetector[0]), mode='bilinear', align_corners=False)
-            # Remove the channel dimension
-            self.projs = self.projs.squeeze(1)  # Shape should now be (360, nDetector[0], nDetector[1])
+            #self.projs = self.projs.unsqueeze(1)  # Shape now: (360, 1, 175, 128)
+            ## Resize using F.interpolate
+            #self.projs = F.interpolate(self.projs, size=(self.geo.nDetector[1], self.geo.nDetector[0]), mode='bilinear', align_corners=False)
+            ## Remove the channel dimension
+            #self.projs = self.projs.squeeze(1)  # Shape should now be (360, nDetector[0], nDetector[1])
             angles = data["val"]["angles"]
             rays = self.get_rays(angles, self.geo.tilt_angle, self.geo, device)
             self.rays = torch.cat([rays, torch.ones_like(rays[...,:1])*self.near, torch.ones_like(rays[...,:1])*self.far], dim=-1)
             self.n_samples = data["numVal"]
             self.image = torch.tensor(data["image"], dtype=torch.float32, device=device)
             self.voxels = torch.tensor(self.get_voxels(self.geo), dtype=torch.float32, device=device)
-            # Rescale the voxels to match your desired shape (e.g., 128x128x128 or 256x256x256)
-            #self.voxels = F.interpolate(self.voxels.unsqueeze(0), size=(256, 256, 256), mode='trilinear', align_corners=False).squeeze(0)
 
     
 
@@ -294,39 +297,10 @@ class TIGREDataset(Dataset):
 
     def __getitem__(self, index):
         if self.type == "train":
-            ##print(f"self.projs shape: {self.projs.shape}")
-##
-            ##print(f"Max index for first dimension: {self.projs.shape[0] - 1}")
-            ##print(f"Max index for second dimension: {self.projs.shape[1] - 1}")
-            ##print(f"Max index for third dimension: {self.projs.shape[2] - 1}")
-
             projs_valid = (self.projs[index]>0).flatten()
             coords_valid = self.coords[projs_valid]
             select_inds = np.random.choice(coords_valid.shape[0], size=[self.n_rays], replace=False)
             select_coords = coords_valid[select_inds].long()
-
-            ##print(f"select_coords shape: {select_coords.shape}")
-            ##print(f"select_coords values: {select_coords}")
-            ##print(f"index value: {index}")
-##
-            ##print("##############3")
-            ##print(f"select_coords[:, 0]: {select_coords[:, 0]}")
-            ##print(f"select_coords[:, 1]: {select_coords[:, 1]}")
-            first_dim_valid = (select_coords[:, 0] >= 0) & (select_coords[:, 0] < self.projs.shape[1])
-            second_dim_valid = (select_coords[:, 1] >= 0) & (select_coords[:, 1] < self.projs.shape[2])
-            ###if not torch.all(first_dim_valid):
-            ###    invalid_first_indices = select_coords[~first_dim_valid]
-            ###    print(f"Invalid first indices: {invalid_first_indices}")
-###
-            ###if not torch.all(second_dim_valid):
-            ###    invalid_second_indices = select_coords[~second_dim_valid]
-            ###    print(f"Invalid second indices: {invalid_second_indices}")
-            ###             # Validate index ranges
-
-            
-            # Use torch.all() to ensure all indices are valid
-            assert torch.all(first_dim_valid), "First index out of bounds"
-            assert torch.all(second_dim_valid), "Second index out of bounds"
 
 
             rays = self.rays[index, select_coords[:, 0], select_coords[:, 1]]
@@ -355,8 +329,6 @@ class TIGREDataset(Dataset):
                         np.linspace(-s2, s2, n2),
                         np.linspace(-s3, s3, n3), indexing="ij")
         voxel = np.asarray(xyz).transpose([1, 2, 3, 0])
-        #voxel_tensor = torch.tensor(voxel, dtype=torch.float32, device="cuda")
-        #voxel_tensor = F.interpolate(voxel_tensor.unsqueeze(0), size=(256, 256, 256), mode='trilinear', align_corners=False).squeeze(0)
 
         return voxel
     
@@ -450,7 +422,7 @@ class TIGREDataset(Dataset):
 
         return torch.stack(rays, dim=0)
 
-    def angle2pose1(self, DSO, angle, tilt_angle):
+    def angle2pose(self, DSO, angle, tilt_angle):
         phi1 = -np.pi / 2
         #counterclockwise around x-axis (90degrees)
         #aligns detector and source palne with the x-ray system
@@ -504,9 +476,9 @@ class TIGREDataset(Dataset):
         return T
 
 
-    def angle2pose(self, DSO, angle, tilt_angle):
+    def angle2pose1(self, DSO, angle, tilt_angle):
+        adjuster = 64/1000
         object_length = self.geo.sVoxel[2]  # Length along z-axis
-        adjuster = 10/1000
         center_shift = np.array([0, 0, 0])  # Offset origin
 
         self.geo.nVoxel
@@ -565,7 +537,7 @@ class TIGREDataset(Dataset):
 
 
 
-    def get_near_far(self, geo: ConeGeometry, tolerance=0.005):
+    def get_near_far_1(self, geo: ConeGeometry, tolerance=0.005):
         """
         Compute the near and far threshold.
         """
@@ -576,5 +548,50 @@ class TIGREDataset(Dataset):
         dist_max = np.max([dist1, dist2, dist3, dist4])
         near = np.max([0, geo.DSO - dist_max - tolerance])
         far = np.min([geo.DSO * 2, geo.DSO + dist_max + tolerance])
+        print("NEAR: ", near)
+        print("FAR: ", far)
         return near, far
 
+
+    def get_near_far_par(self, geo, tolerance=0.005):
+        # Define the four corners of the bounding box relative to `offOrigin`
+        dist1 = np.abs(geo.offOrigin[1] - geo.sVoxel[1] / 2)
+        dist2 = np.abs(geo.offOrigin[1] + geo.sVoxel[1] / 2)
+
+        # Compute min and max distances along the Y-axis
+        dist_min = np.min([dist1, dist2])
+        dist_max = np.max([dist1, dist2])
+
+        # The near and far planes now depend only on the bounding box extents in parallel-beam
+        near = np.max([0, dist_min - tolerance])  # Ensure near is non-negative
+        far = dist_max + tolerance
+
+        # Normalize by a characteristic length, such as detector height (sDetector[1])
+        near_normalized = near / geo.sDetector[1]
+        far_normalized = far / geo.sDetector[1]
+        print("NEAR_NJORMALIZED: ", near_normalized)
+        print("FASDFASF   ", far_normalized)
+        return far_normalized, near_normalized
+    
+
+    def get_near_far(self, geo: ConeGeometry, tolerance=0.005):
+        """
+        Compute the near and far threshold for a tilted parallel beam (laminography) setup.
+        """
+        # Adjust the z-range due to the tilt angle
+        # Calculate maximum extent in z-direction based on tilt
+        tilt_radians = np.radians(geo.tilt_angle)
+        z_tilt_offset = geo.sVoxel[2] * np.abs(np.sin(tilt_radians))
+
+        # Compute bounds for near and far, taking into account the tilt and offsets
+        min_dist_z = np.abs(geo.offOrigin[2] - geo.sVoxel[2] / 2 - z_tilt_offset - tolerance)
+        max_dist_z = np.abs(geo.offOrigin[2] + geo.sVoxel[2] / 2 + z_tilt_offset + tolerance)
+
+        # Calculate near and far along the z-axis
+        near = np.maximum(0, min_dist_z)
+        far = max_dist_z
+        near_normalized = near / geo.sDetector[1]
+        far_normalized = far / geo.sDetector[1]
+        print("NEAR: ", near_normalized)
+        print("FAR: ", far_normalized)
+        return near_normalized, far_normalized

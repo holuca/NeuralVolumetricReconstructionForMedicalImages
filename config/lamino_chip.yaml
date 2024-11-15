@@ -1,7 +1,7 @@
 exp:
-  expname: laminography
+  expname: tomography
   expdir: ./logs/
-  datadir: ./data/laminography.pickle
+  datadir: ./data/tomography.pickle
 network:
   net_type: mlp
   num_layers: 4
@@ -24,7 +24,7 @@ render:
   raw_noise_std: 0.
   netchunk: 409600
 train:
-  epoch: 1500
+  epoch: 250
   n_batch: 1
   n_rays: 512
   lrate: 0.001
@@ -33,4 +33,4 @@ train:
   resume: False
 log:
   i_eval: 250  # Epoch for evaluation
-  i_save: 500  # Epoch for saving
+  i_save: 250  # Epoch for saving

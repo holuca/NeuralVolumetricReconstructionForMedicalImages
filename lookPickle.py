@@ -3,7 +3,7 @@ import pickle
 import numpy as np
 
 # Load the pickle file
-with open("./data/chest_50.pickle", "rb") as f:
+with open("./data/tomography_new.pickle", "rb") as f:
     data = pickle.load(f)
 print(data)
 # Access the projections_chip data from the loaded dictionary
