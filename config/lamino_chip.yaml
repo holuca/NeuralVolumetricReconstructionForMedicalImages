@@ -1,7 +1,7 @@
 exp:
-  expname: lamino_chip_normalized_DSO100
+  expname: tomo_new
   expdir: ./logs/
-  datadir: ./data/lamino_chip_normalized.pickle
+  datadir: ./data/tomo_new.pickle
 network:
   net_type: mlp
   num_layers: 4
@@ -24,7 +24,7 @@ render:
   raw_noise_std: 0.
   netchunk: 409600
 train:
-  epoch: 1500
+  epoch: 250
   n_batch: 1
   n_rays: 1024
   lrate: 0.001

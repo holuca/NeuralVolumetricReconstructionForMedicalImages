@@ -253,7 +253,7 @@ class TIGREDataset(Dataset):
 
 
 
-    def get_near_far(self, geo: ConeGeometry, tolerance=0.005):
+    def get_near_far_1(self, geo: ConeGeometry, tolerance=0.005):
         """
         Compute the near and far threshold.
         """
@@ -264,4 +264,31 @@ class TIGREDataset(Dataset):
         dist_max = np.max([dist1, dist2, dist3, dist4])
         near = np.max([0, geo.DSO - dist_max - tolerance])
         far = np.min([geo.DSO * 2, geo.DSO + dist_max + tolerance])
+        print("NEAR: ", near)
+        print("FAR: ", far)
         return near, far
+    
+    def get_near_far(self, geo, tolerance=0.005):
+
+        tilt_radians = np.radians(geo.tilt_angle)
+        z_tilt_offset = geo.sVoxel[2] * np.abs(np.sin(tilt_radians))
+
+        # Define the four corners of the bounding box relative to `offOrigin`
+        dist1 = np.abs(geo.offOrigin[1] - geo.sVoxel[1] / 2 - z_tilt_offset)
+        dist2 = np.abs(geo.offOrigin[1] + geo.sVoxel[1] / 2 + z_tilt_offset)
+
+        # Compute min and max distances along the Y-axis
+        dist_min = np.min([dist1, dist2])
+        dist_max = np.max([dist1, dist2])
+
+        # The near and far planes now depend only on the bounding box extents in parallel-beam
+        near = np.max([0, dist_min - tolerance])  # Ensure near is non-negative
+        far = dist_max + tolerance
+
+        # Normalize by a characteristic length, such as detector height (sDetector[1])
+        near_normalized = near / geo.sDetector[1]
+        far_normalized = far / geo.sDetector[1]
+        print("NEAR_NJORMALIZED: ", near_normalized)
+        print("FASDFASF   ", far_normalized)
+        return near_normalized, far_normalized
+    
