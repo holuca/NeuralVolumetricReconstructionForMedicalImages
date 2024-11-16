@@ -1,7 +1,7 @@
 exp:
-  expname: tomography
+  expname: laminography
   expdir: ./logs/
-  datadir: ./data/tomography.pickle
+  datadir: ./data/laminography.pickle
 network:
   net_type: mlp
   num_layers: 4

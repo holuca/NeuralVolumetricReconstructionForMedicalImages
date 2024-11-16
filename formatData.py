@@ -12,8 +12,8 @@ tomography_projections = np.load("./data_npy/projections.npy")
 
 tomography_projections_gt = np.load("./data_npy/ground_truth.npy")
 tomography_projections_gt = np.rot90(tomography_projections_gt, k=3, axes=(0, 2))
-#tomography_projections_gt = np.rot90(tomography_projections_gt, k=1, axes=(1, 2))
-tomography_projections = np.rot90(tomography_projections, k=2, axes=(0, 2))
+
+#tomography_projections = np.rot90(tomography_projections, k=2, axes=(1, 2))
 
 
 max_tomo_new = tomography_new.max()
@@ -37,12 +37,12 @@ data = {
     'dDetector': [1.0, 1.0],  # Size of detector elements
     'nVoxel': [128, 128, 128],  # Number of voxels
     'dVoxel': [1, 1, 1],  # Voxel size
-    'offOrigin': [-128, -128, -128],  # Offset of the origin
+    'offOrigin': [64, 64, 0],  # Offset of the origin
     'offDetector': [0, 0],  # Offset of the detectorW
     'accuracy': 0.5,
     'mode': 'parallel',  # Scan mode
     'filter': None,  # Some filter applied to the data
-    'totalAngle': np.pi,  # Total scan angle in radian
+    'totalAngle': 180,   # Total scan angle 
     'startAngle': 0,  # Start angle of the scan
     'randomAngle': False,  # If the scan angles are randomized
     'convert': False,  # Conversion flag
@@ -53,7 +53,7 @@ data = {
     'tilt_angle': 0,
     'image': tomography_projections_gt,  # Placeholder 3D image
     'train': {
-        'angles': np.linspace(0, np.pi, 180, endpoint=False),  # 360 projections equally spaced
+        'angles': np.linspace(-np.pi/2, np.pi/2, 180, endpoint=False),  # 360 projections equally spaced
         'projections': tomo_normalized,  # projections from npy file
     },
     'val': {

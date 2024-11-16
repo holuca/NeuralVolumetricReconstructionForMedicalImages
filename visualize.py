@@ -18,7 +18,7 @@ lami_360 = np.load("./logs/laminography_360/eval/epoch_00250/image_pred.npy")
 lami_360_noRot = np.load(("./logs/laminography_360_noRot/eval/epoch_00250/image_pred.npy"))
 
 
-tomo_now =  np.load(("./logs/tomography_new/eval/epoch_00250/image_pred.npy"))
+tomo_now =  np.load(("./logs/tomography/eval/epoch_00250/image_pred.npy"))
 #current = np.load("./logs/laminography/eval/epoch_00250/image_pred.npy")
 viewer = napari.Viewer()
 

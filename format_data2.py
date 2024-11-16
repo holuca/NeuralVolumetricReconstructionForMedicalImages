@@ -1,36 +1,43 @@
+from itertools import product
 import numpy as np
 import pickle
 import os
-from itertools import product
+import torch
 
-# Load data files
-tomography_new = np.load("./data_npy/projections_real.npy")
-tomography_new = np.transpose(tomography_new, axes=(0, 2, 1))
-
-angles = np.load("./data_npy/angles_real.npy")
-angles_radians = np.deg2rad(angles)
-angles_radians_inverted = -angles_radians
-
-tomography_projections = np.load("./data_npy/projections.npy")
 tomography_projections_gt = np.load("./data_npy/ground_truth.npy")
+
+laminography_projections = np.load("./data_npy/lamino_chip.npy")
+laminography_projections_180 = np.load("./data_npy/projections_laminography.npy")
+
+#Correct: k3_02 (for visualization)
 tomography_projections_gt = np.rot90(tomography_projections_gt, k=3, axes=(0, 2))
 
-# Normalize data
-max_tomo_new = tomography_new.max()
-max_tomo = tomography_projections.max()
-max_tomo_gt = tomography_projections_gt.max()
-max_chest = 0.06712057
+#TESTing
 
-tomo_normalized = (tomography_projections / max_tomo) * max_chest
-tomo_gt_normalized = (tomography_projections_gt / max_tomo_gt) * max_chest
-tomo_new_normalized = (tomography_new / max_tomo_new) * max_chest
+#laminography_projections = np.rot90(laminography_projections, k=2, axes=(1, 2))
+#laminography_projections = torch.tensor(laminography_projections)
+#laminography_projections = torch.flip(laminography_projections, dims=(1,2))
+
+#CORRECT: k2_02
+laminography_projections_180 = np.rot90(laminography_projections_180, k=2, axes=(1, 2))
+
+
+# Transpose for a side view (swap axes 0 and 1)
+# Calculate max values for normalization
+max_lami = laminography_projections.max()
+max_lami_gt = laminography_projections_180.max()
+max_chest = 0.06712057  # Maximum value in CHEST data
+
+
+lami_normalized = (laminography_projections / max_lami) * max_chest
+lami_180_normalized = (laminography_projections_180/ max_lami_gt) * max_chest
 
 # Define output directory for pickle files
 output_directory = './picklefiles'
 os.makedirs(output_directory, exist_ok=True)
 
 # Define possible values for offOrigin
-possible_values = [-128, 0, 128]
+possible_values = [-64, 0, 64]
 
 # Generate and save a pickle file for each combination of offOrigin
 for offOrigin_values in product(possible_values, repeat=3):
@@ -49,7 +56,7 @@ for offOrigin_values in product(possible_values, repeat=3):
         'accuracy': 0.5,
         'mode': 'parallel',
         'filter': None,
-        'totalAngle': np.pi,
+        'totalAngle': 180,
         'startAngle': 0,
         'randomAngle': False,
         'convert': False,
@@ -60,12 +67,13 @@ for offOrigin_values in product(possible_values, repeat=3):
         'tilt_angle': 0,
         'image': tomography_projections_gt,
         'train': {
-            'angles': np.linspace(0, np.pi, 180, endpoint=False),  # 360 projections equally spaced
-            'projections': tomo_normalized,
-        },
+            'angles': np.linspace(np.pi/2, 2 * np.pi - np.pi/2, 180, endpoint=True),  # 360 projections equally spaced
+            #'angles': np.linspace(0, 180, 180, endpoint=True),  # 360 projections equally spaced
+            'projections': lami_180_normalized,  # projections from npy file
+    },
         'val': {
-            'angles': angles_radians_inverted,
-            'projections': tomo_new_normalized
+            'angles':  np.linspace(np.pi/2, 2 * np.pi - np.pi/2, 360, endpoint=True),  # 360 projections equally spaced
+            'projections': lami_normalized
         }
     }
     
