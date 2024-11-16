@@ -55,7 +55,7 @@ data = {
     'tilt_angle': 29,
     'image': tomography_projections_gt,  # Placeholder 3D image
     'train': {
-        'angles': - np.linspace(np.pi/2, 2 * np.pi - np.pi/2, 180, endpoint=True),  # 360 projections equally spaced
+        'angles': np.linspace(np.pi/2, 2 * np.pi - np.pi/2, 180, endpoint=True),  # 360 projections equally spaced
         #'angles': np.linspace(0, 180, 180, endpoint=True),  # 360 projections equally spaced
         'projections': lami_180_normalized,  # projections from npy file
     },
