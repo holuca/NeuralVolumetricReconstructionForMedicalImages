@@ -13,6 +13,7 @@ from .encoder import get_encoder
 
 
 
+
 class Trainer:
     def __init__(self, cfg, device="cuda"):
 
@@ -79,6 +80,7 @@ class Trainer:
         """
         json_hp = json.dumps(hp, indent=2)
         return "".join("\t" + line for line in json_hp.splitlines(True))
+    
 
     def start(self):
         """

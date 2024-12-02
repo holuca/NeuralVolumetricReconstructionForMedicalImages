@@ -27,3 +27,6 @@ def calc_tv_loss(loss, x, k):
     loss["loss"] += tv * k
     loss["loss_tv"] = tv * k
     return loss
+
+
+

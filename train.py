@@ -18,6 +18,8 @@ def config_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="./config/chest_50.yaml",
                         help="configs file path")
+    parser.add_argument("--pretrained", action="store_true",
+                        help="Use pre-trained models for evaluation.")
     return parser
 
 parser = config_parser()
@@ -28,6 +30,9 @@ cfg = load_config(args.config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+
+
+
 class BasicTrainer(Trainer):
     def __init__(self):
         """
@@ -35,6 +40,55 @@ class BasicTrainer(Trainer):
         """
         super().__init__(cfg, device)
         print(f"[Start] exp: {cfg['exp']['expname']}, net: Basic network")
+
+    def validate_model(self):
+        """
+        Validate the pre-trained model by running a small test batch.
+        """
+        self.net.eval()  # Set model to evaluation mode
+        if self.net_fine:
+            self.net_fine.eval()
+
+        # Use a single sample from the evaluation dataset for validation
+        with torch.no_grad():
+            select_ind = np.random.choice(len(self.eval_dset))  # Randomly select a test sample
+            projs = self.eval_dset.projs[select_ind]
+            rays = self.eval_dset.rays[select_ind].reshape(-1, 8)
+
+            H, W = projs.shape
+            projs_pred = []
+            for i in range(0, rays.shape[0], self.n_rays):
+                projs_pred.append(render(rays[i:i+self.n_rays], self.net, self.net_fine, **self.conf["render"])["acc"])
+            projs_pred = torch.cat(projs_pred, 0).reshape(H, W)
+
+            # Compute metrics (e.g., PSNR or MSE)
+            psnr = get_psnr(projs_pred, projs)
+            mse = get_mse(projs_pred, projs)
+
+            print(f"[Validation] PSNR: {psnr.item():.2f}, MSE: {mse.item():.4f}")
+
+    def load_pretrained_model(self, checkpoint_path):
+        """
+        Load pre-trained model from a checkpoint.
+        """
+        if osp.exists(checkpoint_path):
+            print(f"[INFO] Loading pre-trained model from {checkpoint_path}.")
+            checkpoint = torch.load(checkpoint_path)
+            self.net.load_state_dict(checkpoint["network"])
+            if self.net_fine and checkpoint.get("network_fine"):
+                self.net_fine.load_state_dict(checkpoint["network_fine"])
+        else:
+            raise FileNotFoundError(f"No checkpoint found at {checkpoint_path}")
+        
+        # Validate the model after loading
+        print("[INFO] Validating the pre-trained model...")
+        self.validate_model()
+        
+    def predict_projections_and_density(self):
+        """
+        Use the loaded model to predict projections and density.
+        """
+        self.eval_step(global_step=0, idx_epoch=0)
 
     def compute_loss(self, data, global_step, idx_epoch):
         rays = data["rays"].reshape(-1, 8)
@@ -50,6 +104,41 @@ class BasicTrainer(Trainer):
             self.writer.add_scalar(f"train/{ls}", loss[ls].item(), global_step)
 
         return loss["loss"]
+    
+    def predict_projections_and_density(self, output_dir):
+        """
+        Generate projections and density using the pre-trained models.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Projections
+        print("[INFO] Generating projections...")
+        num_projections = len(self.eval_dset)  # Dynamically retrieve the number of projections
+        projections = []
+        for i in range(num_projections):
+            projs = self.eval_dset.projs[i]
+            rays = self.eval_dset.rays[i].reshape(-1, 8)
+            H, W = projs.shape
+            projs_pred = []
+            for j in range(0, rays.shape[0], self.n_rays):
+                projs_pred.append(
+                    render(rays[j:j+self.n_rays], self.net, self.net_fine, **self.conf["render"])["acc"]
+                )
+            projs_pred = torch.cat(projs_pred, 0).reshape(H, W).cpu().detach().numpy()
+            projections.append(projs_pred)
+        
+        projections = np.stack(projections, axis=0)
+        np.save(osp.join(output_dir, "projections.npy"), projections)
+        print(f"[INFO] Projections saved to {osp.join(output_dir, 'projections.npy')}. Shape: {projections.shape}")
+
+
+        # 3D Density
+        print("[INFO] Generating 3D density...")
+        voxels = self.eval_dset.voxels
+        density_pred = run_network(voxels, self.net_fine if self.net_fine else self.net, self.netchunk)
+        density_pred = density_pred.squeeze().cpu().detach().numpy()
+        np.save(osp.join(output_dir, "density.npy"), density_pred)
+        print(f"[INFO] 3D density saved to {osp.join(output_dir, 'density.npy')}")
 
     def eval_step(self, global_step, idx_epoch):
         """
@@ -107,76 +196,15 @@ class BasicTrainer(Trainer):
         return loss
     
 
-    def eval_step1(self, global_step, idx_epoch):
-        """
-        Evaluation step
-        """
-        # Evaluate projection
-        select_ind = np.random.choice(len(self.eval_dset))
-        projs = self.eval_dset.projs[select_ind]
-        rays = self.eval_dset.rays[select_ind].reshape(-1, 8)
-        H, W = projs.shape
-        projs_pred = []
-        for i in range(0, rays.shape[0], self.n_rays):
-            projs_pred.append(render(rays[i:i+self.n_rays], self.net, self.net_fine, **self.conf["render"])["acc"])
-        projs_pred = torch.cat(projs_pred, 0).reshape(H, W)
-
-        # Evaluate density prediction
-        image = self.eval_dset.image
-        image_pred = run_network(self.eval_dset.voxels, self.net_fine if self.net_fine is not None else self.net, self.netchunk)
-        image_pred = image_pred.squeeze()
-
-        # Calculate loss metrics
-        loss = {
-            "proj_mse": get_mse(projs_pred, projs),
-            "proj_psnr": get_psnr(projs_pred, projs),
-            "psnr_3d": get_psnr_3d(image_pred, image),
-            "ssim_3d": get_ssim_3d(image_pred, image),
-        }
-
-        # Horizontal slices
-        show_slice = 5
-        show_step = image.shape[-1] // show_slice
-        show_image = image[..., ::show_step]
-        show_image_pred = image_pred[..., ::show_step]
-        show_horizontal = []
-        for i_show in range(show_slice):
-            show_horizontal.append(torch.concat([show_image[..., i_show], show_image_pred[..., i_show]], dim=0))
-        show_density_horizontal = torch.concat(show_horizontal, dim=1)
-        
-        # Vertical slices
-        show_image_vert = image[:, ::show_step, :]
-        show_image_pred_vert = image_pred[:, ::show_step, :]
-        show_vertical = []
-        for i_show in range(show_slice):
-            show_vertical.append(torch.concat([show_image_vert[:, i_show, :], show_image_pred_vert[:, i_show, :]], dim=0))
-        show_density_vertical = torch.concat(show_vertical, dim=1)
-    
-        # Combine both horizontal and vertical slices
-        show_combined = torch.concat([show_density_horizontal, show_density_vertical], dim=0)
-        show_proj = torch.concat([projs, projs_pred], dim=1)
-    
-        # Log images
-        self.writer.add_image("eval/density (row1-2: gt/pred horizontal, row3-4: gt/pred vertical)", 
-                              cast_to_image(show_combined), global_step, dataformats="HWC")
-        self.writer.add_image("eval/projection (left: gt, right: pred)", cast_to_image(show_proj), global_step, dataformats="HWC")
-    
-        # Log metrics
-        for ls in loss.keys():
-            self.writer.add_scalar(f"eval/{ls}", loss[ls], global_step)
-            
-        # Save images and stats
-        eval_save_dir = osp.join(self.evaldir, f"epoch_{idx_epoch:05d}")
-        os.makedirs(eval_save_dir, exist_ok=True)
-        np.save(osp.join(eval_save_dir, "image_pred.npy"), image_pred.cpu().detach().numpy())
-        np.save(osp.join(eval_save_dir, "image_gt.npy"), image.cpu().detach().numpy())
-        iio.imwrite(osp.join(eval_save_dir, "slice_show_combined.png"), (cast_to_image(show_combined) * 255).astype(np.uint8))
-        iio.imwrite(osp.join(eval_save_dir, "proj_show_left_gt_right_pred.png"), (cast_to_image(show_proj) * 255).astype(np.uint8))
-        with open(osp.join(eval_save_dir, "stats.txt"), "w") as f: 
-            for key, value in loss.items(): 
-                f.write("%s: %f\n" % (key, value.item()))
 
 
 trainer = BasicTrainer()
-trainer.start()
-        
+# Check for existing checkpoint and decide whether to train or compute projections
+
+if args.pretrained:
+    output_dir = "./output_dir"
+    trainer.load_pretrained_model(checkpoint_path="./logs/tomography/ckpt.tar")
+    trainer.predict_projections_and_density(output_dir)
+else:
+    trainer.start()
+

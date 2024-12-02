@@ -6,3 +6,4 @@ def get_network(type):
         return DensityNetwork
     else:
         raise NotImplementedError("Unknown network typeß!")
+

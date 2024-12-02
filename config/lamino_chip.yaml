@@ -18,15 +18,15 @@ encoder:
   base_resolution: 16
   log2_hashmap_size: 19
 render:
-  n_samples: 197
+  n_samples: 1000
   n_fine: 0
   perturb: True
   raw_noise_std: 0.
   netchunk: 409600
 train:
-  epoch: 250
+  epoch: 500
   n_batch: 1
-  n_rays: 512
+  n_rays: 1024
   lrate: 0.001
   lrate_gamma: 0.1
   lrate_step: 1500
