@@ -17,8 +17,8 @@ pip install -r requirements.txt
 ```
 
 ## Training and evaluation
-
-Download four CT datasets from [here](https://drive.google.com/drive/folders/1BJYR4a4iHpfFFOAdbEe5O_7Itt1nukJd?usp=sharing). Put them into the `./data` or `./data_npy` folder respecively.
+To create own pickle files, use `format_data.py`. Change parameteres like number of angles, volume size etc. for your own settings.
+Download datasets from [here](https://drive.google.com/drive/folders/1BJYR4a4iHpfFFOAdbEe5O_7Itt1nukJd?usp=sharing). Put them into the `./data` or `./data_npy` folder respecively.
 
 Experiments settings are stored in `./config` folder.
 
