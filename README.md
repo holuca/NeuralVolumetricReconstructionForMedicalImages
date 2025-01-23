@@ -1,22 +1,5 @@
 # Laminography-Adapted NAF
-This is a framework for reconstructing attenutation field using NAF. It has been adapted to work for laminography settings.
-
-## Setup
-
-We recommend using [Conda](https://docs.conda.io/en/latest/miniconda.html) to set up an environment.
-
-``` sh
-# Create environment
-conda create -n naf python=3.9 -y
-conda activate naf
-
-# Install pytorch (hash encoder requires CUDA v11.3)
-pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
-
-# Install other packages
-pip install -r requirements.txt
-```
-
+This work adapts the Neural Attenuation Field (NAF) framework for laminography and extends its application to real-world data, offering a faster and more cost-effective alternative to conventional CBCT. Our work addresses the challenges posed by laminography-specific artifacts, including adjustments to beam geometry, handling of tilted angles, and integrating masking techniques.
 ## Setup
 
 We recommend using [Conda](https://docs.conda.io/en/latest/miniconda.html) to set up an environment.
