@@ -24,6 +24,10 @@ class DensityNetwork(nn.Module):
             self.activations.append(nn.Sigmoid())
         elif last_activation == "relu":
             self.activations.append(nn.LeakyReLU())
+        elif last_activation == "tanh":
+            self.activations.append(nn.Tanh())
+        elif last_activation == "none":
+            self.activations.append(nn.Identity())  
         else:
             raise NotImplementedError("Unknown last activation")
 
@@ -42,7 +46,14 @@ class DensityNetwork(nn.Module):
                 x = torch.cat([input_pts, x], -1)
 
             x = linear(x)
-            x = activation(x)
-        
+            # Print statistics after each linear layer - to adjust shift and scale manually for
+            #print(f"Layer {i} Linear Output: min={x.min().item():.6f}, max={x.max().item():.6f}, mean={x.mean().item():.6f}, std={x.std().item():.6f}")
+            x = activation(x) 
+            #if i == len(self.layers) - 1 and isinstance(self.activations[i], nn.Tanh):
+            #    x = x * 0.08  # Scale tanh output to match target range
+            # Print statistics after each activation
+            #print(f"Layer {i} Activation Output: min={x.min().item():.6f}, max={x.max().item():.6f}, mean={x.mean().item():.6f}, std={x.std().item():.6f}")
+
+
         return x
     

@@ -1,29 +1,112 @@
+import cv2
 import torch
 import torch.nn as nn
+from tqdm import tqdm
+import numpy as np
+import torch
+from scipy.ndimage import rotate
+import matplotlib.pyplot as plt
+from torch.cuda.amp import autocast
+import numpy as np
+import torch
+from scipy.ndimage import rotate
+from torch.utils.checkpoint import checkpoint
+from src.loss import compute_tv_regularization
+
+def compute_tv_regularization(pts):
+    """
+    Compute total variation (TV) regularization on points sampled along rays.
+
+    Args:
+        pts: [num_rays, n_samples, 3] Points sampled along the rays.
+
+    Returns:
+        tv_loss: Total variation loss.
+    """
+    diff = pts[:, 1:, :] - pts[:, :-1, :]  # Differences between consecutive points
+    tv_loss = torch.sum(torch.abs(diff))  # Sum of L1 norms
+    return tv_loss
 
 
-def render(rays, net, net_fine, n_samples, n_fine, perturb, netchunk, raw_noise_std):
+def render(rays, net, net_fine, n_samples, n_fine, perturb, netchunk, raw_noise_std, chunk_size=None):
+
+    """
+    Perform rendering with optional chunking for memory efficiency.
+
+    Args:
+        rays: Input rays [num_rays, 8].
+        net: Coarse network.
+        net_fine: Fine network (if any).
+        n_samples: Number of coarse samples.
+        n_fine: Number of fine samples.
+        perturb: If True, applies perturbation to sampling.
+        netchunk: Maximum size for network chunks.
+        raw_noise_std: Standard deviation of noise to add to raw predictions.
+        chunk_size: Optional. Number of rays to process in one chunk.
+    Returns:
+        Dictionary containing the accumulated results.
+    """
+    
+    n_rays = rays.shape[0]
+    if chunk_size is None or chunk_size >= n_rays:
+        # Process all rays at once if no chunking is needed
+        return render_chunk(rays, net, net_fine, n_samples, n_fine, perturb, netchunk, raw_noise_std)
+    
+    # Initialize outputs
+    acc_all, pts_all = [], []
+    acc0_all, weights0_all, pts0_all = [], [], []
+
+    for i in range(0, n_rays, chunk_size):
+        rays_chunk = rays[i:i+chunk_size]
+        ret = render_chunk(rays_chunk, net, net_fine, n_samples, n_fine, perturb, netchunk, raw_noise_std)
+        acc_all.append(ret["acc"])
+        pts_all.append(ret["pts"])
+        if "acc0" in ret:
+            acc0_all.append(ret["acc0"])
+            weights0_all.append(ret["weights0"])
+            pts0_all.append(ret["pts0"])
+    
+    # Combine all chunks into final outputs
+    ret = {
+        "acc": torch.cat(acc_all, dim=0),
+        "pts": torch.cat(pts_all, dim=0),
+    }
+    if acc0_all:
+        ret["acc0"] = torch.cat(acc0_all, dim=0)
+        ret["weights0"] = torch.cat(weights0_all, dim=0)
+        ret["pts0"] = torch.cat(pts0_all, dim=0)
+
+    return ret
+
+
+def render_chunk(rays, net, net_fine, n_samples, n_fine, perturb, netchunk, raw_noise_std):
+    """
+    Core rendering logic for a single chunk of rays.
+    Args are similar to render.
+    """
     n_rays = rays.shape[0]
     rays_o, rays_d, near, far = rays[...,:3], rays[...,3:6], rays[...,6:7], rays[...,7:]
 
+    # Sample depth along rays
     t_vals = torch.linspace(0., 1., steps=n_samples, device=near.device)
     z_vals = near * (1. - t_vals) + far * (t_vals)
-
     z_vals = z_vals.expand([n_rays, n_samples])
 
     if perturb:
-        # get intervals between samples
         mids = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
         upper = torch.cat([mids, z_vals[..., -1:]], -1)
         lower = torch.cat([z_vals[..., :1], mids], -1)
-        # stratified samples in those intervals
         t_rand = torch.rand(z_vals.shape, device=lower.device)
         z_vals = lower + (upper - lower) * t_rand
 
-    pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]  # [n_rays, n_samples, 3]
+    # Compute points along rays
+    pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]
     bound = net.bound - 1e-6
     pts = pts.clamp(-bound, bound)
 
+    # Query the network for coarse samples
+    #######
+    
     raw = run_network(pts, net, netchunk)
     acc, weights = raw2outputs(raw, z_vals, rays_d, raw_noise_std)
 
@@ -41,28 +124,55 @@ def render(rays, net, net_fine, n_samples, n_fine, perturb, netchunk, raw_noise_
         pts = pts.clamp(-bound, bound)
         raw = run_network(pts, net_fine, netchunk)
         acc, _ = raw2outputs(raw, z_vals, rays_d, raw_noise_std)
+    
 
-    ret = {"acc": acc, "pts":pts}
+    # Calculate total variation loss on points (rays)
+    lambda_tv = 0.1
+    tv_loss = compute_tv_regularization(pts) * lambda_tv
+
+
+
+    ret = {"acc": acc, "pts": pts, "tv_loss":tv_loss}
     if net_fine is not None and n_fine > 0:
         ret["acc0"] = acc_0
         ret["weights0"] = weights_0
         ret["pts0"] = pts_0
-    
+
+    # Check for NaNs or infinities
     for k in ret:
         if torch.isnan(ret[k]).any() or torch.isinf(ret[k]).any():
             print(f"! [Numerical Error] {k} contains nan or inf.")
 
     return ret
 
-
 def run_network(inputs, fn, netchunk):
-    """
-    Prepares inputs and applies network "fn".
-    """
     uvt_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
-    out_flat = torch.cat([fn(uvt_flat[i:i + netchunk]) for i in range(0, uvt_flat.shape[0], netchunk)], 0)
+    out_flat = []
+    for i in range(0, uvt_flat.shape[0], netchunk):
+        chunk = uvt_flat[i:i+netchunk]
+        out_flat.append(fn(chunk))
+    out_flat = torch.cat(out_flat, 0)
     out = out_flat.reshape(list(inputs.shape[:-1]) + [out_flat.shape[-1]])
-    return out 
+    return out
+
+
+
+
+
+def forward_with_checkpoint(net, x):
+    return checkpoint(net, x)
+
+
+
+def process_voxel_chunks(voxels, net, chunk_size, netchunk):
+        results = []
+        for chunk in torch.split(voxels, chunk_size, dim=0):  # Split along the first dimension
+            chunk_result = run_network(chunk, net, netchunk)
+            results.append(chunk_result)
+        return torch.cat(results, dim=0)  # Concatenate results along the first dimension
+
+
+
 
 
 def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0.):
@@ -135,12 +245,3 @@ def sample_pdf(bins, weights, N_samples, det=False):
     samples = bins_g[..., 0] + t * (bins_g[..., 1] - bins_g[..., 0])
 
     return samples
-
-
-        
-        
-
-
-
-
-
