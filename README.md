@@ -1,7 +1,7 @@
 # Laminography-Adapted NAF
 This work adapts the Neural Attenuation Field (NAF) framework for laminography and extends its application to real-world data, offering a faster and more cost-effective alternative to conventional CBCT. Our work addresses the challenges posed by laminography-specific artifacts, including adjustments to beam geometry, handling of tilted angles, and integrating masking techniques.
 
-The paper can be read here: [View the PDF]("semesterProject_naf.pdf")
+The paper can be read here: [View the PDF](semesterProject_naf.pdf)
 
 ## Setup
 
